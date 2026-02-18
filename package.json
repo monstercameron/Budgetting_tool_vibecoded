@@ -1,0 +1,33 @@
+{
+  "name": "budgeting-tool-gh",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 4000 --strictPort",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4000 --strictPort",
+    "test": "node --test src/tests/*.test.js",
+    "test:ui-smoke": "node scripts/smoke-ui-playwright.js",
+    "profile:perf": "node scripts/profile-dashboard-playwright.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "node -e \"console.log('No linter configured yet')\""
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.18",
+    "@types/node": "^22.13.10",
+    "@vitejs/plugin-react": "^4.7.0",
+    "autoprefixer": "^10.4.24",
+    "playwright": "^1.55.0",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.18",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.3"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.97.0",
+    "firebase": "^12.9.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  }
+}
