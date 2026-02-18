@@ -32,7 +32,7 @@ import {
   calculatePlanningCockpitInsightsFromCollectionsState,
   calculateUnifiedFinancialRecordsSourceOfTruthFromCollectionsState,
   calculateNetWorthProjectionProfilesUsingThreeAggressionLayers
-} from '../core/pure.js'
+} from '../src/core/pure.js'
 
 test('buildDefaultBudgetCollectionsStateForLocalFirstUsage returns empty collections', () => {
   const [defaultState, defaultStateError] = buildDefaultBudgetCollectionsStateForLocalFirstUsage()

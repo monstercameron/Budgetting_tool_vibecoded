@@ -30,7 +30,7 @@ import {
   loadFirebaseWebConfigFromLocalStorageCache,
   persistFirebaseWebConfigIntoLocalStorageCache,
   initializeFirebaseClientsFromWebConfig
-} from '../core/impure.js'
+} from '../src/core/impure.js'
 
 /**
  * Creates an in-memory localStorage mock for impure wrapper testing.

@@ -3583,7 +3583,7 @@ export default function App() {
                 {isSupabaseOperationInFlight ? <p className="mt-1 text-[11px] font-semibold text-indigo-600">Sync in progress...</p> : null}
                 {supabaseSyncStatusState.detail ? <p className="mt-1 text-[11px] text-slate-500">{supabaseSyncStatusState.detail}</p> : null}
                 <p className="mt-1 text-[11px] text-slate-500">Expected tables: <code>profile_current</code> and <code>profile_history</code> with RLS keyed by <code>user_id</code>.</p>
-                <p className="mt-1 text-[11px] text-slate-500">Full guide: <code>docs/supabase-setup.md</code></p>
+                <p className="mt-1 text-[11px] text-slate-500">Full guide: <code>project-docs/supabase-setup.md</code></p>
                 <div className="mt-2 rounded-xl border border-slate-200/90 bg-slate-100/90 p-2">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-600">OTP vs Magic Link Note</p>
                   <p className="mt-1 text-[11px] text-slate-600">Supabase email OTP is not a separate mode from magic links. Both use <code>signInWithOtp()</code>; the email template content decides link vs 6-digit code.</p>

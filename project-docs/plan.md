@@ -5,7 +5,7 @@ This plan follows `AGENTS.md` as the governing standard. If this plan conflicts 
 
 ## 1) Fast Implementation Contract
 - Core logic files: `src/core/pure.js` and `src/core/impure.js`.
-- Tests: `src/tests/pure.test.js` and `src/tests/impure.test.js`.
+- Tests: `test/pure.test.js` and `test/impure.test.js`.
 - All project functions return `[value, err]`.
 - Tuple errors are checked immediately (`if (err)`).
 - `pure.js` is deterministic only; `impure.js` contains all side effects.
@@ -127,7 +127,7 @@ Track these entities with strict validation:
 ## 8) Testing and Quality Gates
 - Unit tests for every exported function in `pure.js` and `impure.js`.
 - Test both tuple success and tuple error branches.
-- Keep test placement in `src/tests/pure.test.js` and `src/tests/impure.test.js` unless a hard technical blocker exists.
+- Keep test placement in `test/pure.test.js` and `test/impure.test.js` unless a hard technical blocker exists.
 - Include smoke coverage for auth/sync/import-export orchestration.
 - Add integration tests for auth/session init, cloud roundtrip, import/export roundtrip, and conflict decision path.
 

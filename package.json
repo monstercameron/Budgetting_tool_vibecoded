@@ -7,7 +7,7 @@
     "dev": "vite --host 127.0.0.1 --port 4000 --strictPort",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4000 --strictPort",
-    "test": "node --test src/tests/*.test.js",
+    "test": "node --test test/*.test.js",
     "test:ui-smoke": "node scripts/smoke-ui-playwright.js",
     "profile:perf": "node scripts/profile-dashboard-playwright.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",

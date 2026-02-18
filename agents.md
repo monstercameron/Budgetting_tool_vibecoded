@@ -34,8 +34,8 @@ This document defines non-negotiable repository standards for all agent-authored
   - `src/core/pure.js`: deterministic business/domain logic.
   - `src/core/impure.js`: side effects and adapters.
 - Unit tests use:
-  - `src/tests/pure.test.js`
-  - `src/tests/impure.test.js`
+  - `test/pure.test.js`
+  - `test/impure.test.js`
 - Avoid introducing extra logic files unless there is a hard technical blocker.
 
 ## 3) Function Contract Standard (MUST)
@@ -132,8 +132,8 @@ Add concise single-line comments only where misunderstanding risks correctness:
 ## 9) Testing Rules (MUST)
 - Every exported function must have direct unit test coverage.
 - Tuple success and tuple error paths must both be tested.
-- `src/tests/pure.test.js` covers deterministic logic.
-- `src/tests/impure.test.js` covers wrappers/adapters with mocks/stubs.
+- `test/pure.test.js` covers deterministic logic.
+- `test/impure.test.js` covers wrappers/adapters with mocks/stubs.
 - No function may be merged without tests.
 - Add one integration test per critical flow:
   - auth/session init
