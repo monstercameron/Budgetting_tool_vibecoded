@@ -1750,8 +1750,8 @@ export function calculateMonthlySavingsStorageSummaryFromCollectionsState(curren
 /**
  * Calculates emergency-fund tracking summary with liquid and invested buckets.
  * Returns an error when required collections are malformed.
- * @param {{expenses: Array<Record<string, unknown>>, assets: Array<Record<string, unknown>>, assetHoldings?: Array<Record<string, unknown>>}} currentCollectionsState
- * @returns {Result<{monthlyExpenses: number, emergencyFundGoal: number, liquidTarget: number, investedTarget: number, liquidAmount: number, investedAmount: number, totalEmergencyFundAmount: number, missingTotalAmount: number, missingLiquidAmount: number, liquidCoverageMonths: number, totalCoverageMonths: number, liquidSources: Array<{id: string, label: string, amount: number}>, investedSources: Array<{id: string, label: string, amount: number}>}>}
+ * @param {{expenses: Array<Record<string, unknown>>, assets: Array<Record<string, unknown>>, assetHoldings?: Array<Record<string, unknown>>, debts?: Array<Record<string, unknown>>, credit?: Array<Record<string, unknown>>, loans?: Array<Record<string, unknown>>}} currentCollectionsState
+ * @returns {Result<{monthlyExpenses: number, monthlyDebtMinimums: number, monthlyObligations: number, emergencyFundGoal: number, liquidTarget: number, investedTarget: number, liquidAmount: number, investedAmount: number, totalEmergencyFundAmount: number, missingTotalAmount: number, missingLiquidAmount: number, liquidCoverageMonths: number, totalCoverageMonths: number, liquidSources: Array<{id: string, label: string, amount: number}>, investedSources: Array<{id: string, label: string, amount: number}>}>}
  */
 export function calculateEmergencyFundTrackingSummaryFromCollectionsState(currentCollectionsState) {
   if (!currentCollectionsState || typeof currentCollectionsState !== 'object') {
@@ -1778,8 +1778,22 @@ export function calculateEmergencyFundTrackingSummaryFromCollectionsState(curren
     const amount = typeof expenseRow.amount === 'number' ? expenseRow.amount : 0
     return runningTotal + amount
   }, 0)
-  const emergencyFundGoal = monthlyExpenses * 6
-  const liquidTarget = monthlyExpenses * 2
+  const monthlyDebtMinimums =
+    (Array.isArray(currentCollectionsState.debts) ? currentCollectionsState.debts : []).reduce((runningTotal, debtRow) => {
+      const minimumPayment = typeof debtRow.minimumPayment === 'number' ? debtRow.minimumPayment : 0
+      return runningTotal + minimumPayment
+    }, 0) +
+    (Array.isArray(currentCollectionsState.credit) ? currentCollectionsState.credit : []).reduce((runningTotal, creditRow) => {
+      const minimumPayment = typeof creditRow.minimumPayment === 'number' ? creditRow.minimumPayment : 0
+      return runningTotal + minimumPayment
+    }, 0) +
+    (Array.isArray(currentCollectionsState.loans) ? currentCollectionsState.loans : []).reduce((runningTotal, loanRow) => {
+      const minimumPayment = typeof loanRow.minimumPayment === 'number' ? loanRow.minimumPayment : 0
+      return runningTotal + minimumPayment
+    }, 0)
+  const monthlyObligations = monthlyExpenses + monthlyDebtMinimums
+  const emergencyFundGoal = monthlyObligations * 6
+  const liquidTarget = monthlyObligations * 2
   const investedTarget = Math.max(0, emergencyFundGoal - liquidTarget)
 
   const LIQUID_KEYWORDS = ['cash', 'checking', 'bank', 'savings', 'hysa', 'money market']
@@ -1819,12 +1833,14 @@ export function calculateEmergencyFundTrackingSummaryFromCollectionsState(curren
   const totalEmergencyFundAmount = liquidAmount + investedAmount
   const missingTotalAmount = Math.max(0, emergencyFundGoal - totalEmergencyFundAmount)
   const missingLiquidAmount = Math.max(0, liquidTarget - liquidAmount)
-  const liquidCoverageMonths = monthlyExpenses > 0 ? liquidAmount / monthlyExpenses : 0
-  const totalCoverageMonths = monthlyExpenses > 0 ? totalEmergencyFundAmount / monthlyExpenses : 0
+  const liquidCoverageMonths = monthlyObligations > 0 ? liquidAmount / monthlyObligations : 0
+  const totalCoverageMonths = monthlyObligations > 0 ? totalEmergencyFundAmount / monthlyObligations : 0
 
   return [
     {
       monthlyExpenses,
+      monthlyDebtMinimums,
+      monthlyObligations,
       emergencyFundGoal,
       liquidTarget,
       investedTarget,
@@ -2420,7 +2436,7 @@ export function calculateDetailedDashboardDatapointRowsFromCurrentCollectionsSta
       metric: 'Emergency Funds Goal',
       value: emergencyFundGoal,
       valueFormat: /** @type {'currency'} */ ('currency'),
-      description: 'Six times monthly expenses.'
+      description: 'Six times monthly obligations (expenses plus debt minimums).'
     },
     {
       metric: 'Goals Completed',
@@ -2546,7 +2562,7 @@ export function calculateDetailedDashboardDatapointRowsFromCurrentCollectionsSta
       metric: 'Emergency Fund Coverage (Months)',
       value: emergencyFundMonthsCovered,
       valueFormat: /** @type {'duration'} */ ('duration'),
-      description: 'How many months of expenses current emergency funds can cover.'
+      description: 'How many months of expenses plus debt minimums current emergency funds can cover.'
     },
     {
       metric: 'Debt Coverage By Assets',

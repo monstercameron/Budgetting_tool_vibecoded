@@ -609,7 +609,7 @@ function buildOverviewHoverContextLinesForMetric(metricRow, sourceBreakdown, eme
     const investedAmount = typeof emergencyFundSummary?.investedAmount === 'number' ? emergencyFundSummary.investedAmount : 0
     const totalCoverageMonths = typeof emergencyFundSummary?.totalCoverageMonths === 'number' ? emergencyFundSummary.totalCoverageMonths : 0
     const status = totalCoverageMonths >= 3 ? 'Good: at least 3-month baseline coverage likely.' : 'Watch: emergency reserve may be thin.'
-    return [status, 'Target: 6 months of expenses.', `Liquid emergency funds: ${formatCurrencyValueForDashboard(liquidAmount)}.`, `Invested emergency funds: ${formatCurrencyValueForDashboard(investedAmount)}.`]
+    return [status, 'Target: 6 months of expenses plus debt minimums.', `Liquid emergency funds: ${formatCurrencyValueForDashboard(liquidAmount)}.`, `Invested emergency funds: ${formatCurrencyValueForDashboard(investedAmount)}.`]
   }
   if (metricLabel === 'Months Until Debt-Free') {
     const status = metricValue <= 24 ? 'Good: short payoff horizon.' : (metricValue <= 60 ? 'Watch: medium payoff horizon.' : 'Risk: long payoff horizon.')
@@ -654,11 +654,11 @@ function buildOverviewHoverContextLinesForMetric(metricRow, sourceBreakdown, eme
   }
   if (metricLabel === 'Emergency Funds Goal') {
     const status = metricValue > 0 ? 'Target: this is your 6-month reserve benchmark.' : 'Risk: emergency goal is not defined.'
-    return [status, `Target amount: ${formatCurrencyValueForDashboard(metricValue)}.`, 'Typical range: 3-6 months expenses (6 months preferred).', 'Track progress monthly against this goal.']
+    return [status, `Target amount: ${formatCurrencyValueForDashboard(metricValue)}.`, 'Typical range: 3-6 months of obligations (expenses + debt minimums).', 'Track progress monthly against this goal.']
   }
   if (metricLabel === 'Emergency Fund Gap') {
     const status = metricValue > 0 ? 'Gap: this is the amount still needed to fully fund 6 months.' : 'Good: emergency fund target is currently met.'
-    return [status, `Current shortfall: ${formatCurrencyValueForDashboard(metricValue)}.`, 'Target benchmark: 6 months of expenses.', 'Reduce this gap with recurring monthly emergency contributions.']
+    return [status, `Current shortfall: ${formatCurrencyValueForDashboard(metricValue)}.`, 'Target benchmark: 6 months of obligations.', 'Reduce this gap with recurring monthly emergency contributions.']
   }
   if (metricLabel === 'Goals Completed') {
     const status = metricValue >= 10 ? 'Good: strong execution pace.' : (metricValue >= 3 ? 'Watch: moderate completion pace.' : 'Risk: low completion pace.')
@@ -698,7 +698,7 @@ function buildOverviewHoverContextLinesForMetric(metricRow, sourceBreakdown, eme
   }
   if (metricLabel === 'Emergency Fund Coverage (Months)') {
     const status = metricValue >= 6 ? 'Good: fully funded emergency coverage.' : (metricValue >= 3 ? 'Watch: baseline emergency coverage.' : 'Risk: emergency coverage is low.')
-    return [status, `Current coverage: ${metricValue.toFixed(1)} months.`, 'Target bands: 3 months minimum, 6 months preferred.', 'Automate contributions to increase coverage steadily.']
+    return [status, `Current coverage: ${metricValue.toFixed(1)} months.`, 'Coverage is against expenses plus debt minimums.', 'Target bands: 3 months minimum, 6 months preferred.']
   }
   if (metricLabel === 'Discretionary After Expenses + Debt') {
     const status = metricValue >= 1000 ? 'Good: healthy discretionary capacity.' : (metricValue >= 0 ? 'Watch: thin discretionary capacity.' : 'Risk: negative discretionary cash flow.')
@@ -1476,15 +1476,27 @@ export default function App() {
         return { itemName, monthlyAmount }
       })
       .filter((rowItem) => rowItem.monthlyAmount > 0)
-    const monthlyTotal = monthlyExpenseRows.reduce((runningTotal, rowItem) => runningTotal + rowItem.monthlyAmount, 0)
-    const sixMonthTotal = monthlyTotal * 6
+    const monthlyDebtRows = [...safeCollections.debts, ...safeCollections.loans, ...safeCollections.credit]
+      .map((debtRow, debtIndex) => {
+        const itemName = typeof debtRow.item === 'string' ? debtRow.item : `Debt ${debtIndex + 1}`
+        const monthlyAmount = typeof debtRow.minimumPayment === 'number' ? debtRow.minimumPayment : 0
+        return { itemName, monthlyAmount }
+      })
+      .filter((rowItem) => rowItem.monthlyAmount > 0)
+    const monthlyExpenseTotal = monthlyExpenseRows.reduce((runningTotal, rowItem) => runningTotal + rowItem.monthlyAmount, 0)
+    const monthlyDebtTotal = monthlyDebtRows.reduce((runningTotal, rowItem) => runningTotal + rowItem.monthlyAmount, 0)
+    const monthlyObligationTotal = monthlyExpenseTotal + monthlyDebtTotal
+    const sixMonthTotal = monthlyObligationTotal * 6
     return [
       'Emergency Goal Formula',
-      `Monthly Expenses Total: ${formatCurrencyValueForDashboard(monthlyTotal)}`,
+      `Monthly Expenses: ${formatCurrencyValueForDashboard(monthlyExpenseTotal)}`,
+      `Monthly Debt Minimums: ${formatCurrencyValueForDashboard(monthlyDebtTotal)}`,
+      `Monthly Obligations Total: ${formatCurrencyValueForDashboard(monthlyObligationTotal)}`,
       `6-Month Goal: ${formatCurrencyValueForDashboard(sixMonthTotal)}`,
-      ...monthlyExpenseRows.map((rowItem) => `- ${rowItem.itemName}: ${formatCurrencyValueForDashboard(rowItem.monthlyAmount)} / mo | ${formatCurrencyValueForDashboard(rowItem.monthlyAmount * 6)} in 6 months`)
+      ...monthlyExpenseRows.map((rowItem) => `- Expense ${rowItem.itemName}: ${formatCurrencyValueForDashboard(rowItem.monthlyAmount)} / mo | ${formatCurrencyValueForDashboard(rowItem.monthlyAmount * 6)} in 6 months`),
+      ...monthlyDebtRows.map((rowItem) => `- Debt ${rowItem.itemName}: ${formatCurrencyValueForDashboard(rowItem.monthlyAmount)} / mo | ${formatCurrencyValueForDashboard(rowItem.monthlyAmount * 6)} in 6 months`)
     ]
-  }, [safeCollections.expenses])
+  }, [safeCollections.credit, safeCollections.debts, safeCollections.expenses, safeCollections.loans])
   const totalMonthlyDebtPayment = React.useMemo(
     () => debtRows.reduce((runningTotal, debtItem) => runningTotal + (typeof debtItem.minimumPayment === 'number' ? debtItem.minimumPayment : 0), 0),
     [debtRows]
@@ -2736,6 +2748,8 @@ export default function App() {
         ? editRecordFormState.customCategory.trim()
         : editRecordFormState.category.trim()
       recordPatch = {
+        person: normalizedPerson,
+        item: editRecordFormState.item,
         amount: Number(editRecordFormState.amount),
         category: normalizedCategory,
         date: editRecordFormState.date,
@@ -3105,7 +3119,7 @@ export default function App() {
       <section id="emergency-fund" className="section-tight section-allows-popovers glass-panel-soft squircle-md z-layer-section mb-4 scroll-mt-40 p-4 md:mb-6 md:p-6" style={{ order: 14 }}>
         <div className="mb-4">
           <h2 className="text-lg font-bold text-slate-900">Emergency Fund Tracker (6 Months)</h2>
-          <p className="text-xs text-slate-500">Bifurcated strategy: 1-2 months liquid cash, remaining emergency reserve in brokerage/invested buckets.</p>
+          <p className="text-xs text-slate-500">Bifurcated strategy: 1-2 months liquid cash, remaining reserve invested. Goal is based on expenses + debt minimums.</p>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {renderHoverMetadataBoxForElement({
@@ -3965,6 +3979,9 @@ export default function App() {
               ) : null}
               {(editRecordFormState.collectionName === 'income' || editRecordFormState.collectionName === 'expenses' || editRecordFormState.collectionName === 'assets') && editRecordFormState.category === '__custom__' ? (
                 <label className="text-sm font-medium text-slate-700">Custom Category<input className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-slate-50/90 px-3 text-slate-900 outline-none transition focus:border-teal-400 focus:bg-white" type="text" value={editRecordFormState.customCategory} onChange={(event) => updateEditRecordFormFieldValue('customCategory', event.target.value)} /></label>
+              ) : null}
+              {editRecordFormState.collectionName === 'income' || editRecordFormState.collectionName === 'expenses' || editRecordFormState.collectionName === 'assets' ? (
+                <label className="text-sm font-medium text-slate-700">Item<input className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-slate-50/90 px-3 text-slate-900 outline-none transition focus:border-teal-400 focus:bg-white" type="text" value={editRecordFormState.item} onChange={(event) => updateEditRecordFormFieldValue('item', event.target.value)} /></label>
               ) : null}
               {editRecordFormState.collectionName !== 'assetHoldings' ? (
                 <label className="text-sm font-medium text-slate-700">Amount / Value<input className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-slate-50/90 px-3 text-slate-900 outline-none transition focus:border-teal-400 focus:bg-white" type="number" step="0.01" value={editRecordFormState.amount} onChange={(event) => updateEditRecordFormFieldValue('amount', event.target.value)} /></label>

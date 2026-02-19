@@ -762,9 +762,12 @@ test('calculateNetWorthProjectionProfilesUsingThreeAggressionLayers returns vali
   assert.equal(projectionRowsError.kind, 'VALIDATION')
 })
 
-test('calculateEmergencyFundTrackingSummaryFromCollectionsState uses 6 months expenses as goal', () => {
+test('calculateEmergencyFundTrackingSummaryFromCollectionsState uses 6 months obligations as goal', () => {
   const [summary, summaryError] = calculateEmergencyFundTrackingSummaryFromCollectionsState({
     expenses: [{ amount: 1000 }, { amount: 500 }],
+    debts: [{ minimumPayment: 250 }],
+    credit: [{ minimumPayment: 100 }],
+    loans: [{ minimumPayment: 150 }],
     assets: [
       { item: 'Savings', amount: 800 },
       { item: 'Brokerage', amount: 1200 }
@@ -777,10 +780,12 @@ test('calculateEmergencyFundTrackingSummaryFromCollectionsState uses 6 months ex
   assert.equal(summaryError, null)
   if (!summary) assert.fail('expected summary to be present')
   assert.equal(summary.monthlyExpenses, 1500)
-  assert.equal(summary.emergencyFundGoal, 9000)
-  assert.equal(summary.liquidTarget, 3000)
+  assert.equal(summary.monthlyDebtMinimums, 500)
+  assert.equal(summary.monthlyObligations, 2000)
+  assert.equal(summary.emergencyFundGoal, 12000)
+  assert.equal(summary.liquidTarget, 4000)
   assert.equal(summary.liquidAmount, 1000)
   assert.equal(summary.investedAmount, 2200)
-  assert.equal(summary.missingTotalAmount, 5800)
+  assert.equal(summary.missingTotalAmount, 8800)
 })
 
