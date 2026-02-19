@@ -223,6 +223,25 @@ test('calculateTwentyDashboardHealthMetricsFromFinancialCollections includes sec
   assert.equal(metricsObject.netWorth, 40500)
 })
 
+test('calculateTwentyDashboardHealthMetricsFromFinancialCollections includes asset holdings net value in total assets and net worth', () => {
+  const [metricsObject, metricsError] = calculateTwentyDashboardHealthMetricsFromFinancialCollections({
+    income: [{ amount: 5000 }],
+    expenses: [{ amount: 3000 }],
+    assets: [{ amount: 10000 }],
+    assetHoldings: [{ assetMarketValue: 120000, assetValueOwed: 90000 }],
+    debts: [{ amount: 4000 }],
+    credit: [{ amount: 500, creditLimit: 2000 }],
+    loans: [{ amount: 2000 }],
+    goals: []
+  })
+
+  assert.equal(metricsError, null)
+  if (!metricsObject) assert.fail('expected metricsObject to be present')
+  assert.equal(metricsObject.totalAssets, 40000)
+  assert.equal(metricsObject.totalLiabilities, 6500)
+  assert.equal(metricsObject.netWorth, 33500)
+})
+
 test('calculateMonthlySavingsStorageSummaryFromCollectionsState returns savings and allocation rows', () => {
   const [summary, summaryError] = calculateMonthlySavingsStorageSummaryFromCollectionsState({
     income: [{ amount: 6000 }],

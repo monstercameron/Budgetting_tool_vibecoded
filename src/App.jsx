@@ -114,7 +114,26 @@ function formatPersonaLabelWithEmoji(personName, emojiByName) {
 
 function buildInitialIncomeExpenseEntryFormState() {
   const todayIsoDate = new Date().toISOString().slice(0, 10)
-  return { person: DEFAULT_PERSONA_NAME, customPerson: '', recordType: 'expense', amount: '', category: '', customCategory: '', date: todayIsoDate, description: '' }
+  return {
+    person: DEFAULT_PERSONA_NAME,
+    customPerson: '',
+    recordType: 'expense',
+    amount: '',
+    category: '',
+    customCategory: '',
+    item: '',
+    minimumPayment: '',
+    monthlyPayment: '',
+    interestRatePercent: '',
+    remainingPayments: '',
+    loanStartDate: '',
+    collateralAssetName: '',
+    collateralAssetMarketValue: '',
+    maxCapacity: '',
+    currentBalance: '',
+    date: todayIsoDate,
+    description: ''
+  }
 }
 
 function buildInitialGoalEntryFormState() {
@@ -808,6 +827,7 @@ export default function App() {
   const [recordNotesFormState, setRecordNotesFormState] = React.useState(buildInitialRecordNotesFormState)
   const [riskFindings, setRiskFindings] = React.useState([])
   const [isRiskLoading, setIsRiskLoading] = React.useState(false)
+  const [isRiskCardsFadingOut, setIsRiskCardsFadingOut] = React.useState(false)
   const [tableSortState, setTableSortState] = React.useState(DEFAULT_TABLE_SORT_STATE)
   const [auditTimelineEntries, setAuditTimelineEntries] = React.useState([])
   const [trendWindowMonths, setTrendWindowMonths] = React.useState(6)
@@ -1127,6 +1147,17 @@ export default function App() {
     }
   }, [trendRowsInSelectedWindow])
 
+  async function fadeOutAndClearRiskCardsOverHalfSecond() {
+    if (!Array.isArray(riskFindings) || riskFindings.length === 0) {
+      setRiskFindings([])
+      return
+    }
+    setIsRiskCardsFadingOut(true)
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 500))
+    setRiskFindings([])
+    setIsRiskCardsFadingOut(false)
+  }
+
   async function recomputeRiskFindingsFromCollectionsState(nextCollectionsState) {
     if (!readHasAnyMeaningfulFinancialRowsInCollections(nextCollectionsState)) {
       setRiskFindings([])
@@ -1134,6 +1165,7 @@ export default function App() {
       return
     }
     setIsRiskLoading(true)
+    await fadeOutAndClearRiskCardsOverHalfSecond()
     const [nextRiskFindings, nextRiskFindingsError] = await computeFinancialRiskFindingsUsingBackgroundWorkerWhenAvailable(nextCollectionsState)
     if (nextRiskFindingsError || !nextRiskFindings) {
       console.warn('[risk] Failed to compute risk findings.', nextRiskFindingsError)
@@ -1216,6 +1248,7 @@ export default function App() {
       return () => { isMounted = false }
     }
     setIsRiskLoading(true)
+    void fadeOutAndClearRiskCardsOverHalfSecond()
     async function computeRiskFindings() {
       const [nextRiskFindings, nextRiskFindingsError] = await computeFinancialRiskFindingsUsingBackgroundWorkerWhenAvailable(safeCollections)
       if (!isMounted) return
@@ -1403,6 +1436,15 @@ export default function App() {
     const selectedProfile = netWorthProjectionProfiles.profiles.find((profileItem) => profileItem.id === netWorthProjectionProfileId)
     return selectedProfile ?? netWorthProjectionProfiles.profiles[0] ?? null
   }, [netWorthProjectionProfiles, netWorthProjectionProfileId])
+  const netWorthProjectionBaselineVariables = netWorthProjectionProfiles?.baselineVariables ?? {
+    startingAssetValueFromDataset: 0,
+    startingLiabilityBalanceFromDataset: 0,
+    totalMonthlyIncomeFromDataset: 0,
+    totalMonthlyExpensesFromDataset: 0,
+    monthlySavingsPaceBaselineFromDataset: 0,
+    totalMonthlyDebtPaymentsFromDataset: 0,
+    weightedAprPercentFromDataset: 0
+  }
   const assetHoldingRows = React.useMemo(() => (
     (Array.isArray(safeCollections.assetHoldings) ? safeCollections.assetHoldings : []).map((rowItem) => {
       const assetValueOwed = typeof rowItem.assetValueOwed === 'number' ? rowItem.assetValueOwed : 0
@@ -1689,6 +1731,46 @@ export default function App() {
         ...collections,
         assetHoldings: [...(Array.isArray(collections.assetHoldings) ? collections.assetHoldings : []), nextAssetRecord]
       }
+    } else if (entryFormState.recordType === 'debt' || entryFormState.recordType === 'loan') {
+      const liabilityCollectionName = entryFormState.recordType === 'debt' ? 'debts' : 'loans'
+      const nextLiabilityRecord = {
+        id: `${entryFormState.recordType}-${isoTimestamp}-${(Array.isArray(collections[liabilityCollectionName]) ? collections[liabilityCollectionName].length : 0) + 1}`,
+        person: normalizedPerson,
+        item: typeof entryFormState.item === 'string' && entryFormState.item.trim() ? entryFormState.item.trim() : (normalizedCategory || 'Liability'),
+        category: normalizedCategory || 'Debt Payment',
+        amount: Number(entryFormState.amount || 0),
+        minimumPayment: Number(entryFormState.minimumPayment || 0),
+        interestRatePercent: Number(entryFormState.interestRatePercent || 0),
+        remainingPayments: Number(entryFormState.remainingPayments || 0),
+        loanStartDate: entryFormState.loanStartDate || entryFormState.date,
+        collateralAssetName: typeof entryFormState.collateralAssetName === 'string' ? entryFormState.collateralAssetName.trim() : '',
+        collateralAssetMarketValue: Number(entryFormState.collateralAssetMarketValue || 0),
+        description: entryFormState.description,
+        date: entryFormState.date,
+        updatedAt: isoTimestamp
+      }
+      nextCollectionsState = {
+        ...collections,
+        [liabilityCollectionName]: [...(Array.isArray(collections[liabilityCollectionName]) ? collections[liabilityCollectionName] : []), nextLiabilityRecord]
+      }
+    } else if (entryFormState.recordType === 'credit_card') {
+      const nextCreditCardRecord = {
+        id: `credit-card-${isoTimestamp}-${(Array.isArray(collections.creditCards) ? collections.creditCards.length : 0) + 1}`,
+        person: normalizedPerson,
+        item: typeof entryFormState.item === 'string' && entryFormState.item.trim() ? entryFormState.item.trim() : 'Credit Account',
+        maxCapacity: Number(entryFormState.maxCapacity || 0),
+        currentBalance: Number(entryFormState.currentBalance || 0),
+        minimumPayment: Number(entryFormState.minimumPayment || 0),
+        monthlyPayment: Number(entryFormState.monthlyPayment || 0),
+        interestRatePercent: Number(entryFormState.interestRatePercent || 0),
+        description: entryFormState.description,
+        date: entryFormState.date,
+        updatedAt: isoTimestamp
+      }
+      nextCollectionsState = {
+        ...collections,
+        creditCards: [...(Array.isArray(collections.creditCards) ? collections.creditCards : []), nextCreditCardRecord]
+      }
     } else {
       const [appendState, appendError] = appendValidatedIncomeOrExpenseRecordIntoCollectionsState(
         collections,
@@ -1716,7 +1798,17 @@ export default function App() {
       recordType,
       category,
       customCategory: '',
+      item: '',
       amount: '',
+      minimumPayment: '',
+      monthlyPayment: '',
+      interestRatePercent: '',
+      remainingPayments: '',
+      loanStartDate: '',
+      collateralAssetName: '',
+      collateralAssetMarketValue: '',
+      maxCapacity: '',
+      currentBalance: '',
       description: ''
     }))
     setIsAddRecordModalOpen(true)
@@ -2793,11 +2885,10 @@ export default function App() {
       </section>
 
       <div className="flex flex-col">
-      <section id="net-worth-trajectory" className="section-tight glass-panel-soft squircle-md z-layer-section mb-4 scroll-mt-40 p-4 md:mb-6 md:p-6" style={{ order: 13 }}>
+      <section id="net-worth-trajectory" className="section-tight section-allows-popovers glass-panel-soft squircle-md z-layer-section mb-4 scroll-mt-40 p-4 md:mb-6 md:p-6" style={{ order: 13 }}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-bold text-slate-900">Net Worth Trajectory</h2>
-            <p className="text-xs text-slate-500">Projection profiles: Conservative, Base, and Accelerated.</p>
           </div>
           <div className="flex items-center gap-2">
             {['conservative', 'base', 'accelerated'].map((profileId) => (
@@ -2814,9 +2905,77 @@ export default function App() {
         </div>
         {selectedNetWorthProjectionProfile ? (
           <React.Fragment>
-            <p className="mb-3 text-xs text-slate-500">
-              Savings x{selectedNetWorthProjectionProfile.assumptions.savingsPaceMultiplier.toFixed(2)} | Growth {selectedNetWorthProjectionProfile.assumptions.annualAssetGrowthPercent.toFixed(1)}% | Debt Extra {(selectedNetWorthProjectionProfile.assumptions.debtPaymentExtraPercent * 100).toFixed(1)}% | APR Adj {selectedNetWorthProjectionProfile.assumptions.aprStressAdjustmentPercent.toFixed(1)}%
-            </p>
+            <div className="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-3">
+              <article className="networth-clarity-card squircle-sm p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Baseline Inputs From Dataset</p>
+                <dl className="mt-2 space-y-1 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <dt className="text-slate-500">Savings / Month</dt>
+                    <dd className="font-semibold text-slate-800">{formatCurrencyValueForDashboard(netWorthProjectionBaselineVariables.monthlySavingsPaceBaselineFromDataset)}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <dt className="text-slate-500">Income / Month</dt>
+                    <dd className="font-semibold text-slate-800">{formatCurrencyValueForDashboard(netWorthProjectionBaselineVariables.totalMonthlyIncomeFromDataset)}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <dt className="text-slate-500">Expenses / Month</dt>
+                    <dd className="font-semibold text-slate-800">{formatCurrencyValueForDashboard(netWorthProjectionBaselineVariables.totalMonthlyExpensesFromDataset)}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <dt className="text-slate-500">Debt Pmts / Month</dt>
+                    <dd className="font-semibold text-slate-800">{formatCurrencyValueForDashboard(netWorthProjectionBaselineVariables.totalMonthlyDebtPaymentsFromDataset)}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <dt className="text-slate-500">Weighted APR</dt>
+                    <dd className="font-semibold text-slate-800">{netWorthProjectionBaselineVariables.weightedAprPercentFromDataset.toFixed(2)}%</dd>
+                  </div>
+                </dl>
+              </article>
+              {renderHoverMetadataBoxForElement({
+                label: 'Selected Pace Modifiers Meaning',
+                boxClassName: 'meta-hover-box-wide',
+                lines: [
+                  'Scenario modifiers applied on top of dataset baseline values.',
+                  `Savings Multiplier (x${selectedNetWorthProjectionProfile.assumptions.savingsPaceMultiplier.toFixed(2)}): scales monthly savings contribution.`,
+                  `Asset Growth (${selectedNetWorthProjectionProfile.assumptions.annualAssetGrowthPercent.toFixed(1)}%/yr): expected annual growth on assets.`,
+                  `Debt Payment Lift (${(selectedNetWorthProjectionProfile.assumptions.debtPaymentExtraPercent * 100).toFixed(1)}%): extra debt paydown above base monthly payment.`,
+                  `APR Shift (${selectedNetWorthProjectionProfile.assumptions.aprStressAdjustmentPercent.toFixed(1)} pts): interest-rate stress adjustment for liabilities.`,
+                  'Rule of thumb: higher savings/growth/lift helps net worth; higher APR hurts net worth.'
+                ],
+                children: (
+                  <article className="networth-clarity-card squircle-sm p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Selected Pace Modifiers</p>
+                    <dl className="mt-2 space-y-2 text-xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <dt className="text-slate-500">Savings Multiplier</dt>
+                        <dd className="rounded-md bg-slate-100 px-2 py-1 font-semibold text-slate-800">x{selectedNetWorthProjectionProfile.assumptions.savingsPaceMultiplier.toFixed(2)}</dd>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <dt className="text-slate-500">Asset Growth (Annual)</dt>
+                        <dd className="rounded-md bg-slate-100 px-2 py-1 font-semibold text-slate-800">{selectedNetWorthProjectionProfile.assumptions.annualAssetGrowthPercent.toFixed(1)}%</dd>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <dt className="text-slate-500">Debt Payment Lift</dt>
+                        <dd className="rounded-md bg-slate-100 px-2 py-1 font-semibold text-slate-800">{(selectedNetWorthProjectionProfile.assumptions.debtPaymentExtraPercent * 100).toFixed(1)}%</dd>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <dt className="text-slate-500">APR Shift</dt>
+                        <dd className="rounded-md bg-slate-100 px-2 py-1 font-semibold text-slate-800">{selectedNetWorthProjectionProfile.assumptions.aprStressAdjustmentPercent.toFixed(1)} pts</dd>
+                      </div>
+                    </dl>
+                  </article>
+                )
+              })}
+              <article className="networth-clarity-card squircle-sm p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">How To Tune</p>
+                <ul className="mt-2 space-y-1 text-xs text-slate-600">
+                  <li>Higher savings multiplier increases monthly contribution.</li>
+                  <li>Higher growth percent compounds asset side faster.</li>
+                  <li>Higher debt payment lift lowers liability principal sooner.</li>
+                  <li>APR shift stress-tests borrowing conditions up/down.</li>
+                </ul>
+              </article>
+            </div>
             <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {selectedNetWorthProjectionProfile.points.map((pointItem) => {
                 const currentPoint = selectedNetWorthProjectionProfile.points.find((rowItem) => rowItem.horizonId === 'current')
@@ -2884,12 +3043,20 @@ export default function App() {
                       lines: hoverLines,
                       boxClassName: 'meta-hover-box-wide',
                       children: (
-                        <article className="squircle-sm border border-slate-200/90 bg-white/90 p-3">
+                        <article className="networth-outcome-card squircle-sm p-3">
                           <p className="text-xs uppercase tracking-[0.12em] text-slate-500">{horizonLabel}</p>
-                          <p className="text-xl font-bold text-slate-800">{formatCurrencyValueForDashboard(pointItem.projectedNetWorth)}</p>
-                          <p className={`text-xs font-semibold ${deltaClassName}`}>{deltaValue >= 0 ? '+' : ''}{formatCurrencyValueForDashboard(deltaValue)} vs current</p>
-                          <p className="mt-1 text-xs text-slate-600">Debt: <span className="font-semibold text-slate-800">{formatCurrencyValueForDashboard(pointItem.projectedDebt)}</span></p>
-                          <p className={`text-xs font-semibold ${debtDeltaClassName}`}>{debtDeltaValue <= 0 ? '' : '+'}{formatCurrencyValueForDashboard(debtDeltaValue)} debt vs current</p>
+                          <div className="mt-2 grid grid-cols-2 gap-3">
+                            <div>
+                              <p className="text-[11px] text-slate-500">Projected Net Worth</p>
+                              <p className="text-lg font-bold text-slate-800">{formatCurrencyValueForDashboard(pointItem.projectedNetWorth)}</p>
+                              <p className={`text-xs font-semibold ${deltaClassName}`}>{deltaValue >= 0 ? '+' : ''}{formatCurrencyValueForDashboard(deltaValue)} vs current</p>
+                            </div>
+                            <div>
+                              <p className="text-[11px] text-slate-500">Projected Debt Balance</p>
+                              <p className="text-lg font-bold text-slate-800">{formatCurrencyValueForDashboard(pointItem.projectedDebt)}</p>
+                              <p className={`text-xs font-semibold ${debtDeltaClassName}`}>{debtDeltaValue <= 0 ? '' : '+'}{formatCurrencyValueForDashboard(debtDeltaValue)} vs current</p>
+                            </div>
+                          </div>
                         </article>
                       )
                     })}
@@ -2903,7 +3070,7 @@ export default function App() {
         )}
       </section>
 
-      <section id="emergency-fund" className="section-tight glass-panel-soft squircle-md z-layer-section mb-4 scroll-mt-40 p-4 md:mb-6 md:p-6" style={{ order: 14 }}>
+      <section id="emergency-fund" className="section-tight section-allows-popovers glass-panel-soft squircle-md z-layer-section mb-4 scroll-mt-40 p-4 md:mb-6 md:p-6" style={{ order: 14 }}>
         <div className="mb-4">
           <h2 className="text-lg font-bold text-slate-900">Emergency Fund Tracker (6 Months)</h2>
           <p className="text-xs text-slate-500">Bifurcated strategy: 1-2 months liquid cash, remaining emergency reserve in brokerage/invested buckets.</p>
@@ -2928,10 +3095,25 @@ export default function App() {
       <section id="risks" className="section-tight glass-panel-soft squircle-md z-layer-section mb-4 scroll-mt-40 p-4 md:mb-6 md:p-6" style={{ order: 11 }}>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-lg font-bold text-slate-900">Financial Risk Flags</h2>
-          <span className="text-xs text-slate-500">{isRiskLoading ? 'running checks...' : `${riskFindings.length} active checks`}</span>
+          <div className="flex items-center gap-2">
+            <button
+              className="rounded-xl border border-slate-300 bg-white/85 p-2 text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+              type="button"
+              onClick={() => { void recomputeRiskFindingsFromCollectionsState(safeCollections) }}
+              disabled={isRiskLoading}
+              aria-label="Reload risk checks"
+              title="Reload risk checks"
+            >
+              <svg className={`h-4 w-4 ${isRiskLoading ? 'animate-spin' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+                <path d="M20 4v6h-6" />
+              </svg>
+            </button>
+            <span className="text-xs text-slate-500">{isRiskLoading ? 'running checks...' : `${riskFindings.length} active checks`}</span>
+          </div>
         </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {riskFindings.map((findingItem) => {
+          {riskFindings.map((findingItem, findingIndex) => {
             const severityName = typeof findingItem.severity === 'string' ? findingItem.severity : 'medium'
             const severityClassName = severityName === 'high'
               ? 'risk-flag-card-high'
@@ -2940,7 +3122,13 @@ export default function App() {
               ? 'risk-flag-severity-high'
               : (severityName === 'low' ? 'risk-flag-severity-low' : 'risk-flag-severity-medium')
             return (
-            <button key={findingItem.id} className={`risk-flag-card rounded-2xl border p-3 text-left transition hover:-translate-y-[1px] hover:shadow-md ${severityClassName}`} onClick={() => setSelectedRiskFinding(findingItem)} type="button">
+            <button
+              key={findingItem.id}
+              className={`risk-flag-card risk-card-enter-smooth rounded-2xl border p-3 text-left transition duration-500 ${isRiskCardsFadingOut ? 'opacity-0' : 'opacity-100'} hover:-translate-y-[1px] hover:shadow-md ${severityClassName}`}
+              style={{ animationDelay: `${Math.min(findingIndex * 60, 420)}ms` }}
+              onClick={() => setSelectedRiskFinding(findingItem)}
+              type="button"
+            >
               <p className={`risk-flag-severity text-xs font-semibold uppercase tracking-[0.14em] ${severityBadgeClassName}`}>{findingItem.severity}</p>
               <p className="mt-1 font-semibold text-slate-900">{findingItem.title}</p>
               <p className="text-sm text-slate-600">{findingItem.detail}</p>
@@ -2995,7 +3183,7 @@ export default function App() {
             <h2 className="text-lg font-bold text-slate-900">Debts / Loans</h2>
             <div className="flex items-center gap-2">
               <span className="text-xs text-slate-500">Add Debts here</span>
-              <button className="rounded-xl border border-white/30 bg-amber-600 px-3 py-2 text-xs font-semibold text-white" onClick={() => openAddRecordModalWithPresetTypeAndCategory('expense', 'Debt Payment')} type="button">+ Quick Add</button>
+              <button className="rounded-xl border border-white/30 bg-amber-600 px-3 py-2 text-xs font-semibold text-white" onClick={() => openAddRecordModalWithPresetTypeAndCategory('debt', 'Debt Payment')} type="button">+ Quick Add</button>
             </div>
           </div>
           <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -3075,7 +3263,7 @@ export default function App() {
             <h2 className="text-lg font-bold text-slate-900">Credit Accounts</h2>
             <div className="flex items-center gap-2">
               <span className="text-xs text-slate-500">Utilization and payoff planning</span>
-              <button className="rounded-xl border border-white/30 bg-rose-600 px-3 py-2 text-xs font-semibold text-white" onClick={() => openAddRecordModalWithPresetTypeAndCategory('expense', 'Credit Card')} type="button">+ Quick Add</button>
+              <button className="rounded-xl border border-white/30 bg-rose-600 px-3 py-2 text-xs font-semibold text-white" onClick={() => openAddRecordModalWithPresetTypeAndCategory('credit_card', 'Credit Card')} type="button">+ Quick Add</button>
             </div>
           </div>
           <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -3136,8 +3324,12 @@ export default function App() {
           </div>
           <div className="mb-4 rounded-2xl border border-slate-200/90 bg-white/75 p-4 backdrop-blur">
             <h3 className="text-base font-bold text-slate-900">Predicted Savings</h3>
-            <p className="mt-1 text-xs text-slate-500">X axis: time horizon. Y axis: projected savings. Bar color shifts with growth using RGB.</p>
+            <p className="mt-1 text-xs text-slate-500">This chart estimates total savings at each horizon using your current monthly savings pace (no scenario multiplier applied).</p>
             <div className="predicted-savings-chart mt-3 rounded-2xl border border-slate-200/90 bg-white/90 p-2">
+              <div className="mb-2 flex items-center justify-between rounded-lg border border-slate-200/80 bg-slate-50/90 px-3 py-2 text-[11px] text-slate-600">
+                <span><span className="mr-2 inline-block h-2 w-2 rounded-sm bg-sky-500 align-middle" />Bars = projected total savings</span>
+                <span>Y-axis: USD | X-axis: horizon</span>
+              </div>
               <div className="grid grid-cols-[56px_minmax(0,1fr)] gap-2">
                 <div className="flex flex-col items-end justify-between pr-2 text-[10px] font-semibold text-slate-500">
                   <span>{formatCurrencyValueForDashboard(maxProjectedSavingsValue)}</span>
@@ -3155,18 +3347,13 @@ export default function App() {
                       {savingsProjectionRows.map((projectionRow, projectionIndex) => {
                         const safeAmount = Math.max(0, projectionRow.projectedSavings)
                         const ratio = maxProjectedSavingsValue > 0 ? safeAmount / maxProjectedSavingsValue : 0
-                        const hueMix = savingsProjectionRows.length > 1 ? projectionIndex / (savingsProjectionRows.length - 1) : 1
-                        const red = Math.round(255 - (155 * hueMix))
-                        const green = Math.round(90 + (140 * hueMix))
-                        const blue = Math.round(120 + (80 * hueMix))
                         return (
                           <div key={projectionRow.id} className="flex min-w-0 flex-1 flex-col items-center justify-end">
                             <p className="mb-1 text-[10px] font-bold text-slate-700">{formatCurrencyValueForDashboard(projectionRow.projectedSavings)}</p>
                             <div
-                              className="w-full max-w-[52px] rounded-t-lg transition-all duration-500"
+                              className="w-full max-w-[52px] rounded-t-lg border border-sky-300/70 bg-sky-500/75 transition-all duration-500"
                               style={{
-                                height: `${Math.max(4, ratio * 136)}px`,
-                                backgroundColor: `rgb(${red}, ${green}, ${blue})`
+                                height: `${Math.max(4, ratio * 136)}px`
                               }}
                             />
                             <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-600">{projectionRow.label}</p>
@@ -3175,7 +3362,7 @@ export default function App() {
                       })}
                     </div>
                   </div>
-                  <p className="mt-2 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Time</p>
+                  <p className="mt-2 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Time Horizon</p>
                 </div>
               </div>
             </div>
@@ -3415,14 +3602,45 @@ export default function App() {
             <div className="mb-4 flex items-center justify-between gap-3"><h3 className="text-lg font-bold text-slate-900">Add Income or Expense</h3><button className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700" onClick={() => setIsAddRecordModalOpen(false)} type="button">Close</button></div>
             <form className="grid grid-cols-1 gap-4 sm:grid-cols-2" onSubmit={submitNewIncomeOrExpenseRecord}>
               <label className="text-sm font-medium text-slate-700">Person<select className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-slate-50/90 px-3 text-slate-900 outline-none transition focus:border-teal-400 focus:bg-white" value={entryFormState.person} onChange={(event) => updateEntryFormFieldValue('person', event.target.value)}>{personaSelectOptions.map((personaOption) => <option key={personaOption.value} value={personaOption.value}>{personaOption.label}</option>)}<option value="__custom__">Custom person...</option></select></label>
-              <label className="text-sm font-medium text-slate-700">Type<select className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-slate-50/90 px-3 text-slate-900 outline-none transition focus:border-teal-400 focus:bg-white" value={entryFormState.recordType} onChange={(event) => updateEntryFormFieldValue('recordType', event.target.value)}><option value="expense">Expense</option><option value="income">Income</option><option value="savings">Savings</option><option value="asset">Asset</option></select></label>
+              <label className="text-sm font-medium text-slate-700">Type<select className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-slate-50/90 px-3 text-slate-900 outline-none transition focus:border-teal-400 focus:bg-white" value={entryFormState.recordType} onChange={(event) => updateEntryFormFieldValue('recordType', event.target.value)}><option value="expense">Expense</option><option value="income">Income</option><option value="savings">Savings</option><option value="asset">Asset</option><option value="debt">Debt</option><option value="loan">Loan</option><option value="credit_card">Credit Account</option></select></label>
               {entryFormState.person === '__custom__' ? (
                 <label className="text-sm font-medium text-slate-700 sm:col-span-2">Custom Person<input className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-slate-50/90 px-3 text-slate-900 outline-none transition focus:border-teal-400 focus:bg-white" type="text" value={entryFormState.customPerson} onChange={(event) => updateEntryFormFieldValue('customPerson', event.target.value)} /></label>
               ) : null}
-              <label className="text-sm font-medium text-slate-700">Amount<input className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-slate-50/90 px-3 text-slate-900 outline-none transition focus:border-teal-400 focus:bg-white" type="number" step="0.01" value={entryFormState.amount} onChange={(event) => updateEntryFormFieldValue('amount', event.target.value)} /></label>
-              <label className="text-sm font-medium text-slate-700">Category<select className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-slate-50/90 px-3 text-slate-900 outline-none transition focus:border-teal-400 focus:bg-white" value={entryFormState.category} onChange={(event) => updateEntryFormFieldValue('category', event.target.value)}><option value="">Select a category</option>{COMMON_BUDGET_CATEGORIES.map((categoryName) => <option key={categoryName} value={categoryName}>{categoryName}</option>)}<option value="__custom__">Custom category...</option></select></label>
+              {entryFormState.recordType === 'credit_card' ? (
+                <label className="text-sm font-medium text-slate-700">Account<input className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-slate-50/90 px-3 text-slate-900 outline-none transition focus:border-teal-400 focus:bg-white" type="text" value={entryFormState.item} onChange={(event) => updateEntryFormFieldValue('item', event.target.value)} /></label>
+              ) : null}
+              {entryFormState.recordType === 'debt' || entryFormState.recordType === 'loan' ? (
+                <label className="text-sm font-medium text-slate-700">Item<input className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-slate-50/90 px-3 text-slate-900 outline-none transition focus:border-teal-400 focus:bg-white" type="text" value={entryFormState.item} onChange={(event) => updateEntryFormFieldValue('item', event.target.value)} /></label>
+              ) : null}
+              <label className="text-sm font-medium text-slate-700">{entryFormState.recordType === 'credit_card' ? 'Current Balance' : 'Amount'}<input className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-slate-50/90 px-3 text-slate-900 outline-none transition focus:border-teal-400 focus:bg-white" type="number" step="0.01" value={entryFormState.recordType === 'credit_card' ? entryFormState.currentBalance : entryFormState.amount} onChange={(event) => updateEntryFormFieldValue(entryFormState.recordType === 'credit_card' ? 'currentBalance' : 'amount', event.target.value)} /></label>
+              {entryFormState.recordType === 'credit_card' ? (
+                <label className="text-sm font-medium text-slate-700">Max Capacity<input className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-slate-50/90 px-3 text-slate-900 outline-none transition focus:border-teal-400 focus:bg-white" type="number" step="0.01" value={entryFormState.maxCapacity} onChange={(event) => updateEntryFormFieldValue('maxCapacity', event.target.value)} /></label>
+              ) : (
+                <label className="text-sm font-medium text-slate-700">Category<select className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-slate-50/90 px-3 text-slate-900 outline-none transition focus:border-teal-400 focus:bg-white" value={entryFormState.category} onChange={(event) => updateEntryFormFieldValue('category', event.target.value)}><option value="">Select a category</option>{COMMON_BUDGET_CATEGORIES.map((categoryName) => <option key={categoryName} value={categoryName}>{categoryName}</option>)}<option value="__custom__">Custom category...</option></select></label>
+              )}
               {entryFormState.category === '__custom__' ? (
                 <label className="text-sm font-medium text-slate-700 sm:col-span-2">Custom Category<input className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-slate-50/90 px-3 text-slate-900 outline-none transition focus:border-teal-400 focus:bg-white" type="text" value={entryFormState.customCategory} onChange={(event) => updateEntryFormFieldValue('customCategory', event.target.value)} /></label>
+              ) : null}
+              {entryFormState.recordType === 'debt' || entryFormState.recordType === 'loan' || entryFormState.recordType === 'credit_card' ? (
+                <label className="text-sm font-medium text-slate-700">Minimum Payment<input className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-slate-50/90 px-3 text-slate-900 outline-none transition focus:border-teal-400 focus:bg-white" type="number" step="0.01" value={entryFormState.minimumPayment} onChange={(event) => updateEntryFormFieldValue('minimumPayment', event.target.value)} /></label>
+              ) : null}
+              {entryFormState.recordType === 'credit_card' ? (
+                <label className="text-sm font-medium text-slate-700">Monthly Payment<input className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-slate-50/90 px-3 text-slate-900 outline-none transition focus:border-teal-400 focus:bg-white" type="number" step="0.01" value={entryFormState.monthlyPayment} onChange={(event) => updateEntryFormFieldValue('monthlyPayment', event.target.value)} /></label>
+              ) : null}
+              {entryFormState.recordType === 'debt' || entryFormState.recordType === 'loan' || entryFormState.recordType === 'credit_card' ? (
+                <label className="text-sm font-medium text-slate-700">APR (%)<input className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-slate-50/90 px-3 text-slate-900 outline-none transition focus:border-teal-400 focus:bg-white" type="number" step="0.01" value={entryFormState.interestRatePercent} onChange={(event) => updateEntryFormFieldValue('interestRatePercent', event.target.value)} /></label>
+              ) : null}
+              {entryFormState.recordType === 'debt' || entryFormState.recordType === 'loan' ? (
+                <label className="text-sm font-medium text-slate-700">Remaining Payments<input className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-slate-50/90 px-3 text-slate-900 outline-none transition focus:border-teal-400 focus:bg-white" type="number" step="1" min="0" value={entryFormState.remainingPayments} onChange={(event) => updateEntryFormFieldValue('remainingPayments', event.target.value)} /></label>
+              ) : null}
+              {entryFormState.recordType === 'debt' || entryFormState.recordType === 'loan' ? (
+                <label className="text-sm font-medium text-slate-700">Loan Start Date<input className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-slate-50/90 px-3 text-slate-900 outline-none transition focus:border-teal-400 focus:bg-white" type="date" value={entryFormState.loanStartDate} onChange={(event) => updateEntryFormFieldValue('loanStartDate', event.target.value)} /></label>
+              ) : null}
+              {entryFormState.recordType === 'debt' || entryFormState.recordType === 'loan' ? (
+                <label className="text-sm font-medium text-slate-700">Collateral Asset<input className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-slate-50/90 px-3 text-slate-900 outline-none transition focus:border-teal-400 focus:bg-white" type="text" value={entryFormState.collateralAssetName} onChange={(event) => updateEntryFormFieldValue('collateralAssetName', event.target.value)} /></label>
+              ) : null}
+              {entryFormState.recordType === 'debt' || entryFormState.recordType === 'loan' ? (
+                <label className="text-sm font-medium text-slate-700">Collateral Market Value<input className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-slate-50/90 px-3 text-slate-900 outline-none transition focus:border-teal-400 focus:bg-white" type="number" step="0.01" min="0" value={entryFormState.collateralAssetMarketValue} onChange={(event) => updateEntryFormFieldValue('collateralAssetMarketValue', event.target.value)} /></label>
               ) : null}
               <label className="text-sm font-medium text-slate-700">Date<input className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-slate-50/90 px-3 text-slate-900 outline-none transition focus:border-teal-400 focus:bg-white" type="date" value={entryFormState.date} onChange={(event) => updateEntryFormFieldValue('date', event.target.value)} /></label>
               <label className="text-sm font-medium text-slate-700 sm:col-span-2">Description<input className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-slate-50/90 px-3 text-slate-900 outline-none transition focus:border-teal-400 focus:bg-white" type="text" value={entryFormState.description} onChange={(event) => updateEntryFormFieldValue('description', event.target.value)} /></label>

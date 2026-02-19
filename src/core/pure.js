@@ -365,12 +365,19 @@ export function calculateTwentyDashboardHealthMetricsFromFinancialCollections(fi
   const totalIncome = sumAmountsFromCollection(financialCollections.income, 'amount')
   const totalExpenses = sumAmountsFromCollection(financialCollections.expenses, 'amount')
   const totalDirectAssets = sumAmountsFromCollection(financialCollections.assets, 'amount')
+  const totalAssetHoldingNetValue = Array.isArray(financialCollections.assetHoldings)
+    ? financialCollections.assetHoldings.reduce((runningTotal, assetHoldingItem) => {
+      const marketValue = typeof assetHoldingItem.assetMarketValue === 'number' ? assetHoldingItem.assetMarketValue : 0
+      const owedValue = typeof assetHoldingItem.assetValueOwed === 'number' ? assetHoldingItem.assetValueOwed : 0
+      return runningTotal + (marketValue - owedValue)
+    }, 0)
+    : 0
   const totalSecuredCollateralAssets = [...financialCollections.debts, ...financialCollections.loans].reduce((runningTotal, liabilityItem) => {
     const collateralAssetMarketValue = typeof liabilityItem.collateralAssetMarketValue === 'number' ? liabilityItem.collateralAssetMarketValue : 0
     return runningTotal + (collateralAssetMarketValue > 0 ? collateralAssetMarketValue : 0)
   }, 0)
   // Critical path: net worth includes both liquid assets and tracked collateral-backed assets.
-  const totalAssets = totalDirectAssets + totalSecuredCollateralAssets
+  const totalAssets = totalDirectAssets + totalAssetHoldingNetValue + totalSecuredCollateralAssets
   const totalDebts = sumAmountsFromCollection(financialCollections.debts, 'amount')
   const totalCreditBalance = sumAmountsFromCollection(financialCollections.credit, 'amount')
   const totalLoanBalance = sumAmountsFromCollection(financialCollections.loans, 'amount')
@@ -1918,7 +1925,7 @@ export function calculateRecommendedMonthlySavingsTargetFromCollectionsState(cur
  * Builds three net-worth projection profiles using deterministic monthly simulation.
  * Returns a tuple error when required collection inputs are missing.
  * @param {{income: Array<Record<string, unknown>>, expenses: Array<Record<string, unknown>>, assets: Array<Record<string, unknown>>, assetHoldings?: Array<Record<string, unknown>>, debts: Array<Record<string, unknown>>, credit: Array<Record<string, unknown>>, creditCards?: Array<Record<string, unknown>>, loans: Array<Record<string, unknown>>}} currentCollectionsState
- * @returns {Result<{horizons: Array<{id: string, label: string, months: number}>, profiles: Array<{id: 'conservative'|'base'|'accelerated', label: string, assumptions: {savingsPaceMultiplier: number, annualAssetGrowthPercent: number, debtPaymentExtraPercent: number, aprStressAdjustmentPercent: number}, points: Array<{horizonId: string, months: number, projectedAssets: number, projectedDebt: number, projectedNetWorth: number}>}>}>}
+ * @returns {Result<{horizons: Array<{id: string, label: string, months: number}>, baselineVariables: {startingAssetValueFromDataset: number, startingLiabilityBalanceFromDataset: number, totalMonthlyIncomeFromDataset: number, totalMonthlyExpensesFromDataset: number, monthlySavingsPaceBaselineFromDataset: number, totalMonthlyDebtPaymentsFromDataset: number, weightedAprPercentFromDataset: number}, profiles: Array<{id: 'conservative'|'base'|'accelerated', label: string, assumptions: {savingsPaceMultiplier: number, annualAssetGrowthPercent: number, debtPaymentExtraPercent: number, aprStressAdjustmentPercent: number}, points: Array<{horizonId: string, months: number, projectedAssets: number, projectedDebt: number, projectedNetWorth: number}>}>}>}
  */
 export function calculateNetWorthProjectionProfilesUsingThreeAggressionLayers(currentCollectionsState) {
   if (!currentCollectionsState || typeof currentCollectionsState !== 'object') {
@@ -2028,6 +2035,7 @@ export function calculateNetWorthProjectionProfilesUsingThreeAggressionLayers(cu
     { id: '5-years', label: '5 Years', months: 60 },
     { id: '10-years', label: '10 Years', months: 120 }
   ]
+  // Editable pacing profiles for the 3 trajectory options.
   const projectionProfiles = [
     {
       id: /** @type {'conservative'} */ ('conservative'),
@@ -2127,6 +2135,15 @@ export function calculateNetWorthProjectionProfilesUsingThreeAggressionLayers(cu
   return [
     {
       horizons,
+      baselineVariables: {
+        startingAssetValueFromDataset: startingAssetValue,
+        startingLiabilityBalanceFromDataset: startingLiabilityBalance,
+        totalMonthlyIncomeFromDataset: monthlySummary.totalIncome,
+        totalMonthlyExpensesFromDataset: monthlySummary.totalExpenses,
+        monthlySavingsPaceBaselineFromDataset: monthlySavingsPaceBaseline,
+        totalMonthlyDebtPaymentsFromDataset: totalMonthlyDebtPayments,
+        weightedAprPercentFromDataset: weightedAprPercent
+      },
       profiles: profileRows
     },
     null

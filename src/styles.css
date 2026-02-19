@@ -14,8 +14,8 @@
   --z-base: 0;
   --z-section: 10;
   --z-interactive: 20;
-  --z-popover: 2600;
-  --z-modal: 2000;
+  --z-popover: 3200;
+  --z-modal: 5000;
 }
 
 body {
@@ -55,6 +55,8 @@ body[data-theme='light'] {
 }
 
 .z-layer-section {
+  position: relative;
+  isolation: isolate;
   z-index: var(--z-section);
 }
 
@@ -63,11 +65,19 @@ body[data-theme='light'] {
   contain-intrinsic-size: 640px;
 }
 
+.section-allows-popovers {
+  content-visibility: visible;
+  contain: none;
+  overflow: visible;
+}
+
 .z-layer-interactive {
+  position: relative;
   z-index: var(--z-interactive);
 }
 
 .z-layer-popover {
+  position: relative;
   z-index: var(--z-popover);
 }
 
@@ -78,6 +88,7 @@ body[data-theme='light'] {
   backdrop-filter: blur(10px);
   animation: float-in 220ms ease-out both;
   transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+  animation: component-settle-in 260ms ease-out both;
 }
 
 body[data-theme='light'] .glass-panel {
@@ -92,6 +103,7 @@ body[data-theme='light'] .glass-panel {
   backdrop-filter: blur(10px) saturate(115%);
   animation: float-in 200ms ease-out both;
   transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+  animation: component-settle-in 260ms ease-out both;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -200,6 +212,10 @@ body[data-theme='dark'] #overview .text-rose-700 {
   border-color: rgba(244, 63, 94, 0.35);
 }
 
+.risk-card-enter-smooth {
+  animation: risk-card-in 500ms ease-out both;
+}
+
 .risk-flag-severity {
   color: #e11d48;
 }
@@ -237,6 +253,25 @@ body[data-theme='dark'] #overview .text-rose-700 {
 
 .risk-modal-panel {
   border-color: rgba(148, 163, 184, 0.35);
+}
+
+/* Keep projection inputs and outcomes visually separated for fast scanning. */
+.networth-clarity-card,
+.networth-outcome-card {
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.9));
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+.networth-outcome-card {
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.98), rgba(239, 246, 255, 0.86));
+}
+
+body[data-theme='dark'] .networth-clarity-card,
+body[data-theme='dark'] .networth-outcome-card {
+  border-color: rgba(148, 163, 184, 0.32);
+  background: linear-gradient(155deg, rgba(15, 23, 42, 0.9), rgba(30, 41, 59, 0.82));
+  box-shadow: 0 14px 28px rgba(2, 6, 23, 0.46);
 }
 
 body[data-theme='dark'] .risk-flag-card {
@@ -537,6 +572,7 @@ tbody tr:hover {
   z-index: var(--z-section);
   -ms-overflow-style: none;
   scrollbar-width: none;
+  animation: component-settle-in 240ms ease-out both;
 }
 
 .table-scroll-region::-webkit-scrollbar {
@@ -642,10 +678,41 @@ body[data-theme='dark'] .record-type-badge-expense {
   }
 }
 
+/* Subtle global motion layer for major UI surfaces and dialogs. */
+.section-tight {
+  animation: component-settle-in 240ms ease-out both;
+}
+
+.app-shell [role='dialog'] > div {
+  animation: component-settle-in 220ms ease-out both;
+}
+
 @keyframes rise-in {
   from {
     opacity: 0;
     transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes component-settle-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes risk-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
   }
   to {
     opacity: 1;

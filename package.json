@@ -9,6 +9,11 @@
     "preview": "vite preview --host 127.0.0.1 --port 4000 --strictPort",
     "test": "node --test test/*.test.js",
     "test:ui-smoke": "node scripts/smoke-ui-playwright.js",
+    "test:ui-full": "node scripts/full-ui-regression-playwright.js",
+    "test:ui-zorder": "node scripts/check-popover-zorder-playwright.js",
+    "test:ui-networth-popover": "node scripts/check-networth-popover-playwright.js",
+    "test:ui-manual-explicit": "node scripts/manual-explicit-ui-audit-playwright.js",
+    "test:all": "npm run test && npm run test:ui-zorder && npm run test:ui-smoke && npm run test:ui-full",
     "profile:perf": "node scripts/profile-dashboard-playwright.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "node -e \"console.log('No linter configured yet')\""
