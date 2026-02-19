@@ -1267,6 +1267,19 @@ export default function App() {
 
   const topMetrics = React.useMemo(() => {
     if (shouldSkipHeavyComputations) return []
+    const assetsSectionTotalAtMarketValue = (Array.isArray(safeCollections.assetHoldings) ? safeCollections.assetHoldings : []).reduce((runningTotal, rowItem) => {
+      const marketValue = typeof rowItem.assetMarketValue === 'number' ? rowItem.assetMarketValue : 0
+      return runningTotal + marketValue
+    }, 0)
+    const debtAndLoanTotal = [...safeCollections.debts, ...safeCollections.loans].reduce((runningTotal, rowItem) => {
+      const amount = typeof rowItem.amount === 'number' ? rowItem.amount : 0
+      return runningTotal + amount
+    }, 0)
+    const creditAccountTotal = creditCardInformationCollection.reduce((runningTotal, rowItem) => {
+      const currentBalance = typeof rowItem.currentBalance === 'number' ? rowItem.currentBalance : 0
+      return runningTotal + currentBalance
+    }, 0)
+    const overviewNetWorthFromSectionTotals = assetsSectionTotalAtMarketValue - debtAndLoanTotal - creditAccountTotal
     const metricPriorityOrder = [
       'Net Worth',
       'Monthly Income',
@@ -1315,7 +1328,11 @@ export default function App() {
       'Travel Goals On Bucket List'
     ]
     const metricPriorityIndexByName = new Map(metricPriorityOrder.map((metricName, metricIndex) => [metricName, metricIndex]))
-    const sortedRows = [...detailedDashboardRows].sort((leftRow, rightRow) => {
+    const sortedRows = detailedDashboardRows.map((rowItem) => (
+      String(rowItem.metric) === 'Net Worth'
+        ? { ...rowItem, value: overviewNetWorthFromSectionTotals, description: 'Asset market value total minus debts/loans and credit account balances.' }
+        : rowItem
+    )).sort((leftRow, rightRow) => {
       const leftPriority = metricPriorityIndexByName.get(String(leftRow.metric))
       const rightPriority = metricPriorityIndexByName.get(String(rightRow.metric))
       const safeLeftPriority = typeof leftPriority === 'number' ? leftPriority : Number.MAX_SAFE_INTEGER
@@ -1330,7 +1347,7 @@ export default function App() {
     const nonGoalRows = sortedRows.filter((rowItem) => !goalMetricNames.includes(String(rowItem.metric)))
     const primaryRowCount = Math.max(0, 20 - goalRows.length)
     return [...nonGoalRows.slice(0, primaryRowCount), ...goalRows].slice(0, 20)
-  }, [detailedDashboardRows, shouldSkipHeavyComputations])
+  }, [creditCardInformationCollection, detailedDashboardRows, safeCollections.assetHoldings, safeCollections.debts, safeCollections.loans, shouldSkipHeavyComputations])
   const incomeAndExpenseRows = React.useMemo(() => {
     if (shouldSkipHeavyComputations) return []
     const [recordRows, recordRowsError] = calculateUnifiedFinancialRecordsSourceOfTruthFromCollectionsState(safeCollections)

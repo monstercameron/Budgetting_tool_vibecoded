@@ -372,12 +372,8 @@ export function calculateTwentyDashboardHealthMetricsFromFinancialCollections(fi
       return runningTotal + (marketValue - owedValue)
     }, 0)
     : 0
-  const totalSecuredCollateralAssets = [...financialCollections.debts, ...financialCollections.loans].reduce((runningTotal, liabilityItem) => {
-    const collateralAssetMarketValue = typeof liabilityItem.collateralAssetMarketValue === 'number' ? liabilityItem.collateralAssetMarketValue : 0
-    return runningTotal + (collateralAssetMarketValue > 0 ? collateralAssetMarketValue : 0)
-  }, 0)
-  // Critical path: net worth includes both liquid assets and tracked collateral-backed assets.
-  const totalAssets = totalDirectAssets + totalAssetHoldingNetValue + totalSecuredCollateralAssets
+  // Critical path: overview net worth should be driven only by explicit asset datasets.
+  const totalAssets = totalDirectAssets + totalAssetHoldingNetValue
   const totalDebts = sumAmountsFromCollection(financialCollections.debts, 'amount')
   const totalCreditBalance = sumAmountsFromCollection(financialCollections.credit, 'amount')
   const totalLoanBalance = sumAmountsFromCollection(financialCollections.loans, 'amount')
@@ -1977,34 +1973,30 @@ export function calculateNetWorthProjectionProfilesUsingThreeAggressionLayers(cu
     }
   }
 
+  const creditCardRows = Array.isArray(currentCollectionsState.creditCards) ? currentCollectionsState.creditCards : []
+  const normalizedCreditCardLiabilityRows = creditCardRows.map((rowItem) => ({
+    amount: typeof rowItem.currentBalance === 'number' ? rowItem.currentBalance : 0,
+    monthlyPayment: typeof rowItem.monthlyPayment === 'number' ? rowItem.monthlyPayment : 0,
+    minimumPayment: typeof rowItem.minimumPayment === 'number' ? rowItem.minimumPayment : 0,
+    interestRatePercent: typeof rowItem.interestRatePercent === 'number' ? rowItem.interestRatePercent : 0,
+    remainingPayments: typeof rowItem.remainingPayments === 'number' ? rowItem.remainingPayments : 0,
+    id: typeof rowItem.id === 'string' ? rowItem.id : ''
+  }))
   const liabilityRows = [
     ...currentCollectionsState.debts,
     ...currentCollectionsState.loans,
-    ...currentCollectionsState.credit
+    ...currentCollectionsState.credit,
+    ...normalizedCreditCardLiabilityRows
   ]
-  const [healthMetrics, healthMetricsError] = calculateTwentyDashboardHealthMetricsFromFinancialCollections({
-    income: currentCollectionsState.income,
-    expenses: currentCollectionsState.expenses,
-    assets: currentCollectionsState.assets,
-    assetHoldings: Array.isArray(currentCollectionsState.assetHoldings) ? currentCollectionsState.assetHoldings : [],
-    debts: currentCollectionsState.debts,
-    credit: currentCollectionsState.credit,
-    loans: currentCollectionsState.loans,
-    goals: []
-  })
-  if (healthMetricsError) return [null, healthMetricsError]
-  if (!healthMetrics) {
-    const [errorValue, createErrorFailure] = createApplicationErrorWithKindMessageAndRecoverability(
-      'VALIDATION',
-      'health metrics are unexpectedly empty during projection',
-      true
-    )
-    if (createErrorFailure) return [null, createErrorFailure]
-    return [null, errorValue]
-  }
-  // Critical path: current trajectory point must match overview net worth baseline.
-  const startingAssetValue = healthMetrics.totalAssets
-  const startingLiabilityBalance = healthMetrics.totalLiabilities
+  // Critical path: trajectory asset baseline should follow asset market value convention.
+  const startingAssetValue = (Array.isArray(currentCollectionsState.assetHoldings) ? currentCollectionsState.assetHoldings : []).reduce((runningTotal, rowItem) => {
+    const marketValue = typeof rowItem.assetMarketValue === 'number' ? rowItem.assetMarketValue : 0
+    return runningTotal + marketValue
+  }, 0)
+  const startingLiabilityBalance = liabilityRows.reduce((runningTotal, rowItem) => {
+    const amount = typeof rowItem.amount === 'number' ? rowItem.amount : 0
+    return runningTotal + amount
+  }, 0)
 
   const totalMonthlyDebtPayments = liabilityRows.reduce((runningTotal, rowItem) => {
     const monthlyPayment = typeof rowItem.monthlyPayment === 'number'

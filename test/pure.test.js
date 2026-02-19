@@ -205,7 +205,7 @@ test('calculateTwentyDashboardHealthMetricsFromFinancialCollections returns all 
   assert.ok(metricKeys.includes('goalProgressScorePercent'))
 })
 
-test('calculateTwentyDashboardHealthMetricsFromFinancialCollections includes secured collateral in total assets and net worth', () => {
+test('calculateTwentyDashboardHealthMetricsFromFinancialCollections excludes implicit secured collateral from total assets and net worth', () => {
   const [metricsObject, metricsError] = calculateTwentyDashboardHealthMetricsFromFinancialCollections({
     income: [{ amount: 5000 }],
     expenses: [{ amount: 3000 }],
@@ -218,9 +218,9 @@ test('calculateTwentyDashboardHealthMetricsFromFinancialCollections includes sec
 
   assert.equal(metricsError, null)
   if (!metricsObject) assert.fail('expected metricsObject to be present')
-  assert.equal(metricsObject.totalAssets, 47000)
+  assert.equal(metricsObject.totalAssets, 10000)
   assert.equal(metricsObject.totalLiabilities, 6500)
-  assert.equal(metricsObject.netWorth, 40500)
+  assert.equal(metricsObject.netWorth, 3500)
 })
 
 test('calculateTwentyDashboardHealthMetricsFromFinancialCollections includes asset holdings net value in total assets and net worth', () => {
