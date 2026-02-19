@@ -556,6 +556,19 @@ thead th:hover {
   background-color: rgba(20, 184, 166, 0.08);
 }
 
+thead th button {
+  cursor: pointer;
+  border-radius: 0.45rem;
+  padding: 0.15rem 0.25rem;
+}
+
+thead th button:hover,
+thead th button:focus-visible {
+  color: #0f766e;
+  background-color: rgba(20, 184, 166, 0.14);
+  outline: none;
+}
+
 tbody tr {
   transition: transform 120ms ease, background-color 140ms ease;
 }

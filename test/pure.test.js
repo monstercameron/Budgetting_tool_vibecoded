@@ -548,6 +548,7 @@ test('calculateCreditCardPaymentRecommendationsFromCollectionsState returns weig
   assert.equal(recommendations.strategy.includes('avalanche'), true)
   assert.equal(recommendations.rows.length, 2)
   assert.ok(recommendations.recommendedTotalMonthlyPayment >= recommendations.currentTotalMonthlyPayment)
+  assert.ok(recommendations.weightedPayoffMonthsRecommended <= recommendations.weightedPayoffMonthsCurrent)
 })
 
 test('buildPersonaImpactSummaryFromCollectionsStateByPersonaName returns cross-collection counts', () => {

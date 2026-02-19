@@ -1496,7 +1496,7 @@ export default function App() {
     [safeCollections.debts]
   )
   const personaOptions = React.useMemo(() => {
-    if (shouldSkipHeavyComputations) return [...DEFAULT_PERSONA_NAMES]
+    if (shouldSkipHeavyComputations) return []
     const discoveredNames = [
       ...safeCollections.income,
       ...safeCollections.expenses,
@@ -1517,7 +1517,7 @@ export default function App() {
       : []
 
     const normalizedMap = new Map()
-    for (const personaName of [...DEFAULT_PERSONA_NAMES, ...explicitlyAddedNames, ...discoveredNames]) {
+    for (const personaName of [...explicitlyAddedNames, ...discoveredNames]) {
       const normalizedName = normalizePersonaNameForDisplay(personaName)
       const key = normalizedName.toLowerCase()
       if (!normalizedMap.has(key)) normalizedMap.set(key, normalizedName)
@@ -1547,6 +1547,10 @@ export default function App() {
     if (summaryError || !summary) return null
     return summary
   }, [collections, personaCrudFormState.personaName, shouldSkipHeavyComputations])
+  const reassignablePersonaOptions = React.useMemo(() => {
+    const selectedPersonaName = normalizePersonaNameForDisplay(personaCrudFormState.personaName).toLowerCase()
+    return personaOptions.filter((personaName) => normalizePersonaNameForDisplay(personaName).toLowerCase() !== selectedPersonaName)
+  }, [personaCrudFormState.personaName, personaOptions])
   const selectedRiskTemplate = React.useMemo(() => {
     if (!selectedRiskFinding) return null
     return buildRiskDetailTemplateFromFindingAndPersonas(selectedRiskFinding, personaSelectOptions.map((optionItem) => optionItem.label))
@@ -2013,6 +2017,15 @@ export default function App() {
       console.warn('[personas] Cascade delete requires exact confirm text.', { mustType })
       return
     }
+    const normalizedReassignName = normalizePersonaNameForDisplay(personaCrudFormState.reassignToPersonaName)
+    if (personaCrudFormState.mode === 'delete_reassign') {
+      const isSamePersonaReassign = normalizedReassignName.toLowerCase() === selectedPersonaName.toLowerCase()
+      const hasNoReassignTargets = reassignablePersonaOptions.length === 0
+      if (isSamePersonaReassign || hasNoReassignTargets) {
+        console.warn('[personas] Delete + Reassign requires another persona target. Use Delete Cascade for default-user-only profiles.')
+        return
+      }
+    }
     console.warn('[personas] Running destructive persona operation.', {
       mode: personaCrudFormState.mode,
       persona: selectedPersonaName,
@@ -2024,16 +2037,11 @@ export default function App() {
       collections,
       selectedPersonaName,
       deleteMode,
-      normalizePersonaNameForDisplay(personaCrudFormState.reassignToPersonaName)
+      normalizedReassignName
     )
     if (deleteError || !nextCollectionsState) {
       console.warn('[personas] Failed to delete persona.', deleteError)
       return
-    }
-
-    const personasAfterDelete = Array.isArray(nextCollectionsState.personas) ? nextCollectionsState.personas : []
-    if (personasAfterDelete.length === 0) {
-      nextCollectionsState.personas = [{ id: `persona-${isoTimestamp}-default`, name: DEFAULT_PERSONA_NAME, emoji: DEFAULT_PERSONA_EMOJI, note: '', updatedAt: isoTimestamp }]
     }
 
     const [persistSuccess, persistError] = await persistBudgetCollectionsStateIntoLocalStorageCache(nextCollectionsState)
@@ -2805,6 +2813,27 @@ export default function App() {
       return nextSortState
     })
   }
+  function renderSortableHeaderCell(tableName, keyName, label, isRightAligned = false) {
+    const currentSort = tableSortState?.[tableName]
+    const isActiveSortColumn = Boolean(currentSort && currentSort.key === keyName)
+    const isAscendingSort = currentSort?.direction === 'asc'
+    const indicator = isActiveSortColumn
+      ? (isAscendingSort ? '↑' : '↓')
+      : '↕'
+    return (
+      <th
+        className={`px-3 py-2 font-semibold ${isRightAligned ? 'text-right' : 'text-left'}`}
+        aria-sort={isActiveSortColumn ? (isAscendingSort ? 'ascending' : 'descending') : 'none'}
+      >
+        <button onClick={() => updateTableSortingForTableName(tableName, keyName)} type="button">
+          {label}
+          <span className={`ml-1 inline-block w-3 text-center text-[11px] ${isActiveSortColumn ? 'text-teal-700 opacity-100' : 'text-slate-400 opacity-55'}`}>
+            {indicator}
+          </span>
+        </button>
+      </th>
+    )
+  }
   const primaryJumpLinks = [
     { href: '#overview', label: 'Overview' },
     { href: '#assets', label: 'Assets' },
@@ -2864,8 +2893,11 @@ export default function App() {
           const label = metricRow.metric
           const formattedValue = formatDashboardDatapointValueByFormat(metricRow.value, metricRow.valueFormat)
           const metadataLines = buildOverviewHoverContextLinesForMetric(metricRow, sourceBreakdown, emergencyFundSummary)
-          const trendLabel = metricRow.value > 0 ? 'Up' : (metricRow.value < 0 ? 'Down' : 'Flat')
-          const trendClassName = metricRow.value > 0 ? 'bg-emerald-100 text-emerald-700' : (metricRow.value < 0 ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600')
+          const trendSignalValue = label === 'Net Worth'
+            ? sourceBreakdown.netWorth.delta
+            : metricRow.value
+          const trendLabel = trendSignalValue > 0 ? 'Up' : (trendSignalValue < 0 ? 'Down' : 'Flat')
+          const trendClassName = trendSignalValue > 0 ? 'bg-emerald-100 text-emerald-700' : (trendSignalValue < 0 ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600')
           return (
             <React.Fragment key={label}>
               {renderHoverMetadataBoxForElement({
@@ -3152,10 +3184,10 @@ export default function App() {
           <table className="w-full min-w-[860px] border-collapse text-sm">
             <thead className="bg-slate-100 text-slate-600">
               <tr>
-                <th className="px-3 py-2 text-left font-semibold"><button onClick={() => updateTableSortingForTableName('goals', 'title')} type="button">Item</button></th>
-                <th className="px-3 py-2 text-left font-semibold"><button onClick={() => updateTableSortingForTableName('goals', 'status')} type="button">Status</button></th>
-                <th className="px-3 py-2 text-right font-semibold"><button onClick={() => updateTableSortingForTableName('goals', 'timeframeMonths')} type="button">Timeframe(months)</button></th>
-                <th className="px-3 py-2 text-left font-semibold"><button onClick={() => updateTableSortingForTableName('goals', 'description')} type="button">Description</button></th>
+                {renderSortableHeaderCell('goals', 'title', 'Item')}
+                {renderSortableHeaderCell('goals', 'status', 'Status')}
+                {renderSortableHeaderCell('goals', 'timeframeMonths', 'Timeframe(months)', true)}
+                {renderSortableHeaderCell('goals', 'description', 'Description')}
               </tr>
             </thead>
             <tbody>
@@ -3204,17 +3236,17 @@ export default function App() {
             <table className="w-full min-w-[860px] border-collapse text-sm">
               <thead className="bg-slate-100 text-slate-600">
                 <tr>
-                  <th className="px-3 py-2 text-left font-semibold"><button onClick={() => updateTableSortingForTableName('debts', 'person')} type="button">Person</button></th>
-                  <th className="px-3 py-2 text-left font-semibold"><button onClick={() => updateTableSortingForTableName('debts', 'item')} type="button">Item</button></th>
-                  <th className="px-3 py-2 text-right font-semibold"><button onClick={() => updateTableSortingForTableName('debts', 'amount')} type="button">Value</button></th>
-                  <th className="px-3 py-2 text-right font-semibold"><button onClick={() => updateTableSortingForTableName('debts', 'minimumPayment')} type="button">Per Month</button></th>
-                  <th className="px-3 py-2 text-right font-semibold"><button onClick={() => updateTableSortingForTableName('debts', 'interestRatePercent')} type="button">Rate</button></th>
-                  <th className="px-3 py-2 text-left font-semibold"><button onClick={() => updateTableSortingForTableName('debts', 'loanStartDate')} type="button">Loan Start</button></th>
-                  <th className="px-3 py-2 text-right font-semibold"><button onClick={() => updateTableSortingForTableName('debts', 'remainingPayments')} type="button">Remaining Pmts</button></th>
+                  {renderSortableHeaderCell('debts', 'person', 'Person')}
+                  {renderSortableHeaderCell('debts', 'item', 'Item')}
+                  {renderSortableHeaderCell('debts', 'amount', 'Value', true)}
+                  {renderSortableHeaderCell('debts', 'minimumPayment', 'Per Month', true)}
+                  {renderSortableHeaderCell('debts', 'interestRatePercent', 'Rate', true)}
+                  {renderSortableHeaderCell('debts', 'loanStartDate', 'Loan Start')}
+                  {renderSortableHeaderCell('debts', 'remainingPayments', 'Remaining Pmts', true)}
                   <th className="px-3 py-2 text-right font-semibold">Payoff Date</th>
-                  <th className="px-3 py-2 text-left font-semibold"><button onClick={() => updateTableSortingForTableName('debts', 'collateralAssetName')} type="button">Collateral</button></th>
-                  <th className="px-3 py-2 text-right font-semibold"><button onClick={() => updateTableSortingForTableName('debts', 'collateralAssetMarketValue')} type="button">Market Value</button></th>
-                  <th className="px-3 py-2 text-left font-semibold"><button onClick={() => updateTableSortingForTableName('debts', 'description')} type="button">Description</button></th>
+                  {renderSortableHeaderCell('debts', 'collateralAssetName', 'Collateral')}
+                  {renderSortableHeaderCell('debts', 'collateralAssetMarketValue', 'Market Value', true)}
+                  {renderSortableHeaderCell('debts', 'description', 'Description')}
                   <th className="px-3 py-2 text-right font-semibold">Actions</th>
                 </tr>
               </thead>
@@ -3275,7 +3307,7 @@ export default function App() {
           </div>
           <div className="table-scroll-region mb-6 rounded-2xl border border-slate-200/90 bg-white/75 backdrop-blur">
             <table className="w-full min-w-[980px] border-collapse text-sm">
-              <thead className="bg-slate-100 text-slate-600"><tr><th className="px-3 py-2 text-left font-semibold"><button onClick={() => updateTableSortingForTableName('credit', 'person')} type="button">Person</button></th><th className="px-3 py-2 text-left font-semibold"><button onClick={() => updateTableSortingForTableName('credit', 'item')} type="button">Account</button></th><th className="px-3 py-2 text-right font-semibold"><button onClick={() => updateTableSortingForTableName('credit', 'maxCapacity')} type="button">Max</button></th><th className="px-3 py-2 text-right font-semibold"><button onClick={() => updateTableSortingForTableName('credit', 'currentBalance')} type="button">Current</button></th><th className="px-3 py-2 text-right font-semibold"><button onClick={() => updateTableSortingForTableName('credit', 'minimumPayment')} type="button">Minimum</button></th><th className="px-3 py-2 text-right font-semibold"><button onClick={() => updateTableSortingForTableName('credit', 'monthlyPayment')} type="button">Monthly</button></th><th className="px-3 py-2 text-right font-semibold"><button onClick={() => updateTableSortingForTableName('credit', 'interestRatePercent')} type="button">Rate</button></th><th className="px-3 py-2 text-right font-semibold">Utilization</th><th className="px-3 py-2 text-right font-semibold">Remaining</th><th className="px-3 py-2 text-right font-semibold">Payback(months)</th><th className="px-3 py-2 text-right font-semibold">Payoff Date</th><th className="px-3 py-2 text-right font-semibold">Actions</th></tr></thead>
+              <thead className="bg-slate-100 text-slate-600"><tr>{renderSortableHeaderCell('credit', 'person', 'Person')}{renderSortableHeaderCell('credit', 'item', 'Account')}{renderSortableHeaderCell('credit', 'maxCapacity', 'Max', true)}{renderSortableHeaderCell('credit', 'currentBalance', 'Current', true)}{renderSortableHeaderCell('credit', 'minimumPayment', 'Minimum', true)}{renderSortableHeaderCell('credit', 'monthlyPayment', 'Monthly', true)}{renderSortableHeaderCell('credit', 'interestRatePercent', 'Rate', true)}<th className="px-3 py-2 text-right font-semibold">Utilization</th><th className="px-3 py-2 text-right font-semibold">Remaining</th><th className="px-3 py-2 text-right font-semibold">Payback(months)</th><th className="px-3 py-2 text-right font-semibold">Payoff Date</th><th className="px-3 py-2 text-right font-semibold">Actions</th></tr></thead>
               <tbody>{creditRowsSorted.map((creditCardItem, creditIndex) => { const stableKey = typeof creditCardItem.id === 'string' ? creditCardItem.id : `credit-info-row-${creditIndex}`; const person = typeof creditCardItem.person === 'string' ? creditCardItem.person : DEFAULT_PERSONA_NAME; const item = typeof creditCardItem.item === 'string' ? creditCardItem.item : ''; const maxCapacity = typeof creditCardItem.maxCapacity === 'number' ? creditCardItem.maxCapacity : 0; const currentBalance = typeof creditCardItem.currentBalance === 'number' ? creditCardItem.currentBalance : 0; const minimumPayment = typeof creditCardItem.minimumPayment === 'number' ? creditCardItem.minimumPayment : 0; const monthlyPayment = typeof creditCardItem.monthlyPayment === 'number' ? creditCardItem.monthlyPayment : 0; const interestRatePercent = typeof creditCardItem.interestRatePercent === 'number' ? creditCardItem.interestRatePercent : 0; const utilizationPercent = maxCapacity > 0 ? (currentBalance / maxCapacity) * 100 : 0; const remainingCapacity = maxCapacity - currentBalance; const [paybackMonths] = calculateEstimatedPayoffMonthsFromBalancePaymentAndInterestRate(currentBalance, monthlyPayment, interestRatePercent); const projectedPayoffDate = formatProjectedPayoffDateFromMonthsOffset(Number(paybackMonths ?? 0)); return <tr key={stableKey} className="group border-t border-slate-200 bg-white"><td className="px-3 py-2 text-slate-700">{formatPersonaLabelWithEmoji(person, personaEmojiByName)}</td><td className="px-3 py-2 text-slate-700">{item}</td><td className="px-3 py-2 text-right font-semibold text-slate-700">{formatCurrencyValueForDashboard(maxCapacity)}</td><td className="px-3 py-2 text-right font-semibold text-slate-700"><span className="inline-flex items-center">{formatCurrencyValueForDashboard(currentBalance)}{renderStaleUpdateIconIfNeeded(creditCardItem)}</span></td><td className="px-3 py-2 text-right font-semibold text-slate-700">{formatCurrencyValueForDashboard(minimumPayment)}</td><td className="px-3 py-2 text-right font-semibold text-slate-700">{formatCurrencyValueForDashboard(monthlyPayment)}</td><td className="px-3 py-2 text-right font-semibold text-slate-700">{interestRatePercent.toFixed(2)}%</td><td className="px-3 py-2 text-right font-semibold text-slate-700">{utilizationPercent.toFixed(2)}%</td><td className="px-3 py-2 text-right font-semibold text-slate-700">{formatCurrencyValueForDashboard(remainingCapacity)}</td><td className="px-3 py-2 text-right font-semibold text-slate-700">{Number(paybackMonths ?? 0).toFixed(1)}</td><td className="px-3 py-2 text-right font-semibold text-slate-700">{projectedPayoffDate}</td><td className="px-3 py-2 text-right">{renderRecordActionsWithIconButtons('creditCards', creditCardItem)}</td></tr> })}</tbody>
             </table>
           </div>
@@ -3369,7 +3401,7 @@ export default function App() {
           </div>
           <div className="table-scroll-region rounded-2xl border border-slate-200/90 bg-white/75 backdrop-blur">
             <table className="w-full min-w-[840px] border-collapse text-sm">
-              <thead className="bg-slate-100 text-slate-600"><tr><th className="px-3 py-2 text-left font-semibold"><button onClick={() => updateTableSortingForTableName('savings', 'person')} type="button">Person</button></th><th className="px-3 py-2 text-left font-semibold"><button onClick={() => updateTableSortingForTableName('savings', 'location')} type="button">Storage</button></th><th className="px-3 py-2 text-right font-semibold"><button onClick={() => updateTableSortingForTableName('savings', 'balance')} type="button">Balance</button></th><th className="px-3 py-2 text-right font-semibold"><button onClick={() => updateTableSortingForTableName('savings', 'allocationPercent')} type="button">Allocation</button></th><th className="px-3 py-2 text-left font-semibold"><button onClick={() => updateTableSortingForTableName('savings', 'description')} type="button">Description</button></th></tr></thead>
+              <thead className="bg-slate-100 text-slate-600"><tr>{renderSortableHeaderCell('savings', 'person', 'Person')}{renderSortableHeaderCell('savings', 'location', 'Storage')}{renderSortableHeaderCell('savings', 'balance', 'Balance', true)}{renderSortableHeaderCell('savings', 'allocationPercent', 'Allocation', true)}{renderSortableHeaderCell('savings', 'description', 'Description')}</tr></thead>
               <tbody>{savingsStorageRowsSorted.map((rowItem) => <tr key={rowItem.id} className="border-t border-slate-200 bg-white"><td className="px-3 py-2 text-slate-700">{formatPersonaLabelWithEmoji(rowItem.person, personaEmojiByName)}</td><td className="px-3 py-2 text-slate-700">{rowItem.location}</td><td className="px-3 py-2 text-right font-semibold text-slate-700">{formatCurrencyValueForDashboard(rowItem.balance)}</td><td className="px-3 py-2 text-right font-semibold text-slate-700">{rowItem.allocationPercent.toFixed(2)}%</td><td className="px-3 py-2 text-slate-500">{rowItem.description}</td></tr>)}</tbody>
             </table>
           </div>
@@ -3388,7 +3420,7 @@ export default function App() {
         </div>
         <div className="table-scroll-region rounded-2xl border border-slate-200/90 bg-white/75 backdrop-blur">
           <table className="w-full min-w-[980px] border-collapse text-sm">
-            <thead className="bg-slate-100 text-slate-600"><tr><th className="px-3 py-2 text-left font-semibold"><button onClick={() => updateTableSortingForTableName('assets', 'person')} type="button">Person</button></th><th className="px-3 py-2 text-left font-semibold"><button onClick={() => updateTableSortingForTableName('assets', 'item')} type="button">Item</button></th><th className="px-3 py-2 text-right font-semibold"><button onClick={() => updateTableSortingForTableName('assets', 'assetValueOwed')} type="button">Asset Value Owed</button></th><th className="px-3 py-2 text-right font-semibold"><button onClick={() => updateTableSortingForTableName('assets', 'assetMarketValue')} type="button">Asset Market Value</button></th><th className="px-3 py-2 text-right font-semibold"><button onClick={() => updateTableSortingForTableName('assets', 'value')} type="button">Value</button></th><th className="px-3 py-2 text-left font-semibold"><button onClick={() => updateTableSortingForTableName('assets', 'description')} type="button">Description</button></th><th className="px-3 py-2 text-right font-semibold">Actions</th></tr></thead>
+            <thead className="bg-slate-100 text-slate-600"><tr>{renderSortableHeaderCell('assets', 'person', 'Person')}{renderSortableHeaderCell('assets', 'item', 'Item')}{renderSortableHeaderCell('assets', 'assetValueOwed', 'Asset Value Owed', true)}{renderSortableHeaderCell('assets', 'assetMarketValue', 'Asset Market Value', true)}{renderSortableHeaderCell('assets', 'value', 'Value', true)}{renderSortableHeaderCell('assets', 'description', 'Description')}<th className="px-3 py-2 text-right font-semibold">Actions</th></tr></thead>
             <tbody>{assetHoldingRowsSorted.map((rowItem) => <tr key={String(rowItem.id)} className="group border-t border-slate-200 bg-white"><td className="px-3 py-2 text-slate-700">{formatPersonaLabelWithEmoji(String(rowItem.person ?? ''), personaEmojiByName)}</td><td className="px-3 py-2 text-slate-700">{String(rowItem.item ?? '')}</td><td className="px-3 py-2 text-right font-semibold text-slate-700">{formatCurrencyValueForDashboard(typeof rowItem.assetValueOwed === 'number' ? rowItem.assetValueOwed : 0)}</td><td className="px-3 py-2 text-right font-semibold text-slate-700">{formatCurrencyValueForDashboard(typeof rowItem.assetMarketValue === 'number' ? rowItem.assetMarketValue : 0)}</td><td className={`px-3 py-2 text-right font-semibold ${(typeof rowItem.value === 'number' ? rowItem.value : 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{formatCurrencyValueForDashboard(typeof rowItem.value === 'number' ? rowItem.value : 0)}</td><td className="px-3 py-2 text-slate-500">{String(rowItem.description ?? '')}</td><td className="px-3 py-2 text-right">{renderRecordActionsWithIconButtons('assetHoldings', rowItem)}</td></tr>)}</tbody>
           </table>
         </div>
@@ -3529,7 +3561,7 @@ export default function App() {
         <div className="mb-5"><h2 className="text-lg font-bold text-slate-900">Detailed Dashboard Metrics</h2></div>
         <div className="table-scroll-region mb-2 rounded-2xl border border-slate-200/90 bg-white/75 backdrop-blur md:mb-6">
           <table className="w-full min-w-[980px] border-collapse text-sm">
-            <thead className="bg-slate-100 text-slate-600"><tr><th className="px-3 py-2 text-left font-semibold"><button onClick={() => updateTableSortingForTableName('detailed', 'metric')} type="button">Metric</button></th><th className="px-3 py-2 text-right font-semibold"><button onClick={() => updateTableSortingForTableName('detailed', 'value')} type="button">Value</button></th><th className="px-3 py-2 text-right font-semibold"><button onClick={() => updateTableSortingForTableName('detailed', 'value')} type="button">Money</button></th><th className="px-3 py-2 text-left font-semibold"><button onClick={() => updateTableSortingForTableName('detailed', 'description')} type="button">Description</button></th></tr></thead>
+            <thead className="bg-slate-100 text-slate-600"><tr>{renderSortableHeaderCell('detailed', 'metric', 'Metric')}{renderSortableHeaderCell('detailed', 'value', 'Value', true)}{renderSortableHeaderCell('detailed', 'value', 'Money', true)}{renderSortableHeaderCell('detailed', 'description', 'Description')}</tr></thead>
             <tbody>{detailedRowsSorted.map((rowItem) => <tr key={rowItem.metric} className="border-t border-slate-200 bg-white"><td className="px-3 py-2 font-semibold text-slate-800">{rowItem.metric}</td><td className="px-3 py-2 text-right font-semibold text-slate-700">{rowItem.valueFormat === 'currency' ? '-' : formatPlainNumericValueForDashboard(rowItem.value, rowItem.valueFormat)}</td><td className="px-3 py-2 text-right font-semibold text-slate-700">{rowItem.valueFormat === 'currency' ? formatCurrencyValueForDashboard(rowItem.value) : '-'}</td><td className="px-3 py-2 text-slate-500">{rowItem.description}</td></tr>)}</tbody>
           </table>
         </div>
@@ -3543,13 +3575,14 @@ export default function App() {
           <article className="squircle-sm border border-slate-200/90 bg-white/90 p-3"><p className="text-xs uppercase tracking-[0.12em] text-slate-500">Diff</p><p className={`text-xl font-bold ${recordsFlowSummary.diff > 0 ? 'text-emerald-700' : (recordsFlowSummary.diff < 0 ? 'text-rose-700' : 'text-slate-600')}`}>{formatCurrencyValueForDashboard(recordsFlowSummary.diff)}</p></article>
         </div>
         <div className="table-scroll-region rounded-2xl border border-slate-200/90 bg-white/75 backdrop-blur">
-          <table className="w-full min-w-[720px] border-collapse text-sm">
+          <table className="w-full min-w-[840px] border-collapse text-sm">
             <thead className="bg-slate-100 text-slate-600">
-              <tr><th className="px-3 py-2 text-left font-semibold"><button onClick={() => updateTableSortingForTableName('records', 'recordType')} type="button">Type</button></th><th className="px-3 py-2 text-left font-semibold"><button onClick={() => updateTableSortingForTableName('records', 'date')} type="button">Date</button></th><th className="px-3 py-2 text-left font-semibold"><button onClick={() => updateTableSortingForTableName('records', 'category')} type="button">Category</button></th><th className="px-3 py-2 text-left font-semibold"><button onClick={() => updateTableSortingForTableName('records', 'description')} type="button">Description</button></th><th className="px-3 py-2 text-right font-semibold"><button onClick={() => updateTableSortingForTableName('records', 'signedAmount')} type="button">Amount</button></th><th className="px-3 py-2 text-right font-semibold">Notes</th><th className="px-3 py-2 text-right font-semibold">Actions</th></tr>
+              <tr>{renderSortableHeaderCell('records', 'person', 'User')}{renderSortableHeaderCell('records', 'recordType', 'Type')}{renderSortableHeaderCell('records', 'date', 'Date')}{renderSortableHeaderCell('records', 'category', 'Category')}{renderSortableHeaderCell('records', 'description', 'Description')}{renderSortableHeaderCell('records', 'signedAmount', 'Amount', true)}<th className="px-3 py-2 text-right font-semibold">Notes</th><th className="px-3 py-2 text-right font-semibold">Actions</th></tr>
             </thead>
             <tbody>
               {incomeExpenseRowsSorted.map((recordItem, recordIndex) => {
                 const recordType = String(recordItem.recordType)
+                const person = typeof recordItem.person === 'string' ? recordItem.person : DEFAULT_PERSONA_NAME
                 const isIncome = recordType === 'income'
                 const isSavings = recordType === 'savings'
                 const isAssetType = recordType === 'asset'
@@ -3577,6 +3610,7 @@ export default function App() {
                 const rowStableKey = `${recordType}-${String(recordItem.id ?? 'row')}-${recordIndex}`
                 return (
                   <tr key={rowStableKey} className="group border-t border-slate-200 bg-white">
+                    <td className="px-3 py-2 text-slate-700">{formatPersonaLabelWithEmoji(person, personaEmojiByName)}</td>
                     <td className="px-3 py-2"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${badgeClassName}`}>{recordType}</span></td>
                     <td className="px-3 py-2 text-slate-700">{typeof recordItem.date === 'string' ? recordItem.date : ''}</td>
                     <td className="px-3 py-2 text-slate-700">{typeof recordItem.category === 'string' ? recordItem.category : (typeof recordItem.item === 'string' ? recordItem.item : '')}</td>
@@ -3737,7 +3771,8 @@ export default function App() {
                       {personaCrudFormState.mode === 'edit' ? <label className="text-sm font-medium text-slate-700">Emoji Preset<select className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-white px-3 text-xl text-slate-900 outline-none transition focus:border-violet-400" value={personaCrudFormState.nextEmojiPreset} onChange={(event) => updatePersonaCrudFormFieldValue('nextEmojiPreset', event.target.value)}>{PERSONA_EMOJI_OPTIONS.map((emojiOption) => <option key={emojiOption} value={emojiOption}>{emojiOption}</option>)}</select></label> : null}
                       {personaCrudFormState.mode === 'edit' ? <label className="text-sm font-medium text-slate-700">Custom Emoji<input className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-white px-3 text-2xl text-slate-900 outline-none transition focus:border-violet-400" type="text" maxLength="4" value={personaCrudFormState.nextCustomEmoji} onChange={(event) => updatePersonaCrudFormFieldValue('nextCustomEmoji', event.target.value)} /></label> : null}
                       {personaCrudFormState.mode === 'edit' ? <label className="text-sm font-medium text-slate-700">Note<input className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-white px-3 text-slate-900 outline-none transition focus:border-violet-400" type="text" value={personaCrudFormState.nextNote} onChange={(event) => updatePersonaCrudFormFieldValue('nextNote', event.target.value)} /></label> : null}
-                      {personaCrudFormState.mode === 'delete_reassign' ? <label className="text-sm font-medium text-slate-700 sm:col-span-2">Reassign all records to<select className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-white px-3 text-slate-900 outline-none transition focus:border-violet-400" value={personaCrudFormState.reassignToPersonaName} onChange={(event) => updatePersonaCrudFormFieldValue('reassignToPersonaName', event.target.value)}>{personaOptions.filter((personaName) => personaName.toLowerCase() !== personaCrudFormState.personaName.toLowerCase()).map((personaName) => <option key={personaName} value={personaName}>{formatPersonaLabelWithEmoji(personaName, personaEmojiByName)}</option>)}</select></label> : null}
+                      {personaCrudFormState.mode === 'delete_reassign' ? <label className="text-sm font-medium text-slate-700 sm:col-span-2">Reassign all records to<select className="mt-1 h-11 w-full rounded-2xl border border-slate-200/90 bg-white px-3 text-slate-900 outline-none transition focus:border-violet-400" value={personaCrudFormState.reassignToPersonaName} onChange={(event) => updatePersonaCrudFormFieldValue('reassignToPersonaName', event.target.value)}>{reassignablePersonaOptions.map((personaName) => <option key={personaName} value={personaName}>{formatPersonaLabelWithEmoji(personaName, personaEmojiByName)}</option>)}</select></label> : null}
+                      {personaCrudFormState.mode === 'delete_reassign' && reassignablePersonaOptions.length === 0 ? <div className="sm:col-span-2 rounded-xl border border-amber-300 bg-amber-50/80 px-3 py-2 text-xs text-amber-900">No alternate persona exists to reassign records. To delete the default user profile, switch to <span className="font-semibold">Delete Cascade</span>.<button className="ml-2 rounded-md border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700" type="button" onClick={() => updatePersonaCrudFormFieldValue('mode', 'delete_cascade')}>Switch to Cascade</button></div> : null}
                       {personaCrudFormState.mode === 'delete_cascade' ? <label className="text-sm font-medium text-rose-700 sm:col-span-2">Type to confirm hard delete<input className="mt-1 h-11 w-full rounded-2xl border border-rose-300 bg-rose-50/70 px-3 text-slate-900 outline-none transition focus:border-rose-500" type="text" placeholder={`DELETE ${personaCrudFormState.personaName}`} value={personaCrudFormState.deleteConfirmText} onChange={(event) => updatePersonaCrudFormFieldValue('deleteConfirmText', event.target.value)} /></label> : null}
                     </div>
                     <div className="mt-3 flex flex-wrap justify-end gap-2">

@@ -839,11 +839,18 @@ export function calculateCreditCardPaymentRecommendationsFromCollectionsState(cu
 
   const totalPriorityScore = scoredRows.reduce((runningTotal, rowItem) => runningTotal + rowItem.weightedPriorityScore, 0)
   const normalizedPriorityDivisor = totalPriorityScore > 0 ? totalPriorityScore : 1
+  const totalCardMinimumPayments = scoredRows.reduce((runningTotal, rowItem) => runningTotal + rowItem.minimumPayment, 0)
+  // Critical path: recommendations should never undercut current payment posture.
+  const baselineCardPaymentPool = Math.max(totalCurrentCardPayment, totalCardMinimumPayments)
+  const allocatableCardPoolAboveMinimums = Math.max(0, (baselineCardPaymentPool + extraCardAccelerationBudget) - totalCardMinimumPayments)
+  const equalShareCount = scoredRows.length > 0 ? scoredRows.length : 1
 
   const recommendationRows = []
   for (const rowItem of scoredRows) {
-    const extraPaymentShare = rowItem.weightedPriorityScore / normalizedPriorityDivisor
-    const recommendedMonthlyPayment = rowItem.minimumPayment + (extraCardAccelerationBudget * extraPaymentShare)
+    const extraPaymentShare = totalPriorityScore > 0
+      ? (rowItem.weightedPriorityScore / normalizedPriorityDivisor)
+      : (1 / equalShareCount)
+    const recommendedMonthlyPayment = rowItem.minimumPayment + (allocatableCardPoolAboveMinimums * extraPaymentShare)
     const [estimatedMonthsCurrent, estimatedMonthsCurrentError] = calculateEstimatedPayoffMonthsFromBalancePaymentAndInterestRate(
       rowItem.currentBalance,
       Math.max(rowItem.currentMonthlyPayment, rowItem.minimumPayment),
@@ -867,7 +874,7 @@ export function calculateCreditCardPaymentRecommendationsFromCollectionsState(cu
       item: rowItem.item,
       currentBalance: rowItem.currentBalance,
       minimumPayment: rowItem.minimumPayment,
-      currentMonthlyPayment: rowItem.currentMonthlyPayment,
+      currentMonthlyPayment: Math.max(rowItem.currentMonthlyPayment, rowItem.minimumPayment),
       interestRatePercent: rowItem.interestRatePercent,
       utilizationPercent: rowItem.utilizationPercent,
       recommendedMonthlyPayment,
